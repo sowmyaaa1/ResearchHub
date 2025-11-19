@@ -39,7 +39,7 @@ export default function StakingPage() {
           .from("staking")
           .select("*")
           .eq("reviewer_id", user.id)
-          .single();
+          .maybeSingle();
 
         setStaking(data);
       } finally {
@@ -70,34 +70,21 @@ export default function StakingPage() {
     setError(null);
 
     try {
-      const transaction = await initiateHederaTransaction(
-        userProfile.wallet_address,
-        parseFloat(stakeAmount),
-        `Staking ${stakeAmount} HBAR for reviewer role`
-      );
+      // TODO: Replace with secure retrieval of user's private key
+      const userPrivateKey = userProfile.private_key || ""; // Ensure this is securely handled
 
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) throw new Error("Not authenticated");
-
-      const lockUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
-
-      const { error: dbError } = await supabase.from("staking").insert({
-        reviewer_id: user.id,
-        staked_amount: parseFloat(stakeAmount),
-        lock_until: lockUntil.toISOString(),
+      const response = await fetch("/api/wallet/stake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: parseFloat(stakeAmount),
+          userAccountId: userProfile.wallet_address,
+          userPrivateKey,
+        }),
       });
 
-      if (dbError) throw dbError;
-
-      // Record transaction
-      await supabase.from("wallet_transactions").insert({
-        user_id: user.id,
-        tx_hash: transaction.transactionHash,
-        type: "stake",
-        amount: parseFloat(stakeAmount),
-      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || "Staking failed");
 
       setStakeAmount("");
       setStaking(null);
@@ -143,8 +130,45 @@ export default function StakingPage() {
                 <p className="text-sm font-mono">{userProfile.wallet_address}</p>
               </div>
             )}
-            <Button variant="outline" className="w-full">
-              Unstake
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={async () => {
+                setIsProcessing(true);
+                setError(null);
+                try {
+                  const response = await fetch("/api/wallet/unstake", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      amount: staking.staked_amount,
+                    }),
+                  });
+                  const result = await response.json();
+                  console.log('Unstake API response:', result);
+                  
+                  if (!result.success) throw new Error(result.error || "Unstaking failed");
+                  
+                  // Check for warnings (DB update failed but transfer succeeded)
+                  if (result.warning) {
+                    console.warn('Unstake warning:', result.warning);
+                    setError(result.warning);
+                    return;
+                  }
+                  
+                  // Success - clear state and reload
+                  setStaking(null);
+                  window.location.reload();
+                } catch (err) {
+                  console.error('Unstake error:', err);
+                  setError(err instanceof Error ? err.message : "Unstaking failed");
+                } finally {
+                  setIsProcessing(false);
+                }
+              }}
+              disabled={isProcessing}
+            >
+              {isProcessing ? "Processing..." : "Unstake"}
             </Button>
           </CardContent>
         </Card>

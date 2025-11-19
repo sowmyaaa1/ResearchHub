@@ -1,14 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
-import { recordPaperOnBlockchain } from "@/lib/blockchain/hedera";
+import { recordPaperOnBlockchain, transferHbar } from "@/lib/blockchain/hedera";
 import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { paperId } = await request.json();
+    const { paperId, authorAccountId, authorPrivateKey, platformAccountId } = await request.json();
 
-    if (!paperId) {
+    if (!paperId || !authorAccountId || !authorPrivateKey || !platformAccountId) {
       return NextResponse.json(
-        { error: "Paper ID required" },
+        { error: "Paper ID, author account ID, author private key, and platform account ID required" },
         { status: 400 }
       );
     }
@@ -37,10 +37,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Record on smart contract
     const blockchainResult = await recordPaperOnBlockchain(
       paperId,
       paper.title,
-      paper.profiles?.wallet_address || user.id
+      paper.profiles?.wallet_address || authorAccountId,
+      authorPrivateKey
+    );
+
+    // Transfer 10 HBAR from author to platform
+    const transferResult = await transferHbar(
+      authorAccountId,
+      authorPrivateKey,
+      platformAccountId,
+      10
     );
 
     const { error: updateError } = await supabase
@@ -66,10 +76,26 @@ export async function POST(request: NextRequest) {
 
     if (verificationError) console.error("Verification record error:", verificationError);
 
+    // Automatically create review assignments with status "unassigned"
+    // Example: create 3 assignments for demo reviewers (replace with your logic)
+    const demoReviewerIds = ["reviewer1", "reviewer2", "reviewer3"];
+    for (const reviewerId of demoReviewerIds) {
+      await supabase
+        .from("review_assignments")
+        .insert({
+          paper_id: paperId,
+          reviewer_id: reviewerId,
+          status: "unassigned",
+          due_date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+    }
+
     return NextResponse.json({
       success: true,
       transactionHash: blockchainResult.transactionHash,
-      message: "Paper published and verified on blockchain",
+      hbarTransactionId: transferResult.transactionId,
+      hbarStatus: transferResult.status,
+      message: "Paper published, verified on blockchain, and HBAR transferred",
     });
   } catch (error) {
     console.error("Blockchain publish error:", error);

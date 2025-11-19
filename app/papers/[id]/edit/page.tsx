@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { useRouter } from 'next/navigation';
+import AssignReviewersForm from "@/components/assign-reviewers-form";
 
 export default function EditPaperPage({
   params,
@@ -21,6 +22,7 @@ export default function EditPaperPage({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availableReviewers, setAvailableReviewers] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -42,6 +44,13 @@ export default function EditPaperPage({
         setAbstract(paper.abstract);
         setKeywords(paper.keywords?.join(", ") || "");
       }
+
+      // Fetch available reviewers
+      const { data: reviewers } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("role", "reviewer");
+      setAvailableReviewers(reviewers || []);
 
       setIsLoading(false);
     })();
@@ -142,6 +151,10 @@ export default function EditPaperPage({
               </Button>
             </div>
           </form>
+          {/* Reviewer Assignment Form */}
+          <div className="mt-8">
+            <AssignReviewersForm paperId={paperId} availableReviewers={availableReviewers} />
+          </div>
         </CardContent>
       </Card>
     </main>

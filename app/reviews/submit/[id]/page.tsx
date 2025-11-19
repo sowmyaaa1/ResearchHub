@@ -32,21 +32,106 @@ export default function SubmitReviewPage() {
 
       if (!user) throw new Error("Not authenticated");
 
+      // Check staking status
+      const { data: staking, error: stakingError } = await supabase
+        .from("staking")
+        .select("staked_amount")
+        .eq("reviewer_id", user.id)
+        .maybeSingle();
+
+      console.log("[review-submit] Staking check:", { staking, stakingError, userId: user.id });
+
+      if (stakingError) {
+        console.error("[review-submit] Staking query error:", stakingError);
+        alert("Error checking staking status. Please try again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      const MIN_STAKE = 100;
+      if (!staking || !staking.staked_amount || staking.staked_amount < MIN_STAKE) {
+        alert(`You must stake at least ${MIN_STAKE} HBAR before submitting a review. Please stake and try again.`);
+        setIsSubmitting(false);
+        return;
+      }
+
+      console.log("[review-submit] Staking verified:", staking.staked_amount, "HBAR");
+
       // Get assignment details
-      const { data: assignment } = await supabase
+      console.log("[review-submit] Looking up assignment ID:", assignmentId);
+      const { data: assignment, error: assignmentError } = await supabase
         .from("review_assignments")
         .select("*")
         .eq("id", assignmentId)
-        .single();
+        .maybeSingle();
 
-      if (!assignment) throw new Error("Assignment not found");
+      console.log("[review-submit] Assignment lookup result:", { assignment, assignmentError });
+
+      if (assignmentError) {
+        console.error("[review-submit] Assignment query error:", assignmentError);
+        alert("Error finding review assignment. Please try again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!assignment) {
+        alert("Review assignment not found. Please check the link and try again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Fetch submission for this paper
+      console.log("[review-submit] Looking up submission for paper:", assignment.paper_id);
+      const { data: submission, error: submissionError } = await supabase
+        .from("submissions")
+        .select("id")
+        .eq("paper_id", assignment.paper_id)
+        .maybeSingle();
+
+      console.log("[review-submit] Submission lookup result:", { submission, submissionError });
+
+      if (submissionError) {
+        console.error("[review-submit] Submission query error:", submissionError);
+        alert("Error finding paper submission. Please contact support.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      if (!submission) {
+        console.log("[review-submit] No submission found, checking papers table directly");
+        // Fallback: check if paper exists directly in papers table
+        const { data: paper, error: paperError } = await supabase
+          .from("papers")
+          .select("id, title")
+          .eq("id", assignment.paper_id)
+          .maybeSingle();
+        
+        console.log("[review-submit] Paper lookup result:", { paper, paperError });
+        
+        if (paperError) {
+          console.error("[review-submit] Paper query error:", paperError);
+          alert("Error finding paper. Please contact support.");
+          setIsSubmitting(false);
+          return;
+        }
+        
+        if (!paper) {
+          alert("Paper not found. The assignment may be invalid.");
+          setIsSubmitting(false);
+          return;
+        }
+        
+        console.log("[review-submit] Found paper directly:", paper.title);
+        // Continue with paper submission instead of submission record
+      }
 
       const response = await fetch("/api/reviews/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           assignmentId,
-          submissionId: assignment.paper_id,
+          submissionId: submission?.id || null,
+          paperId: assignment.paper_id,
           noveltyScore: parseInt(novelty),
           technicalCorrectnessScore: parseInt(technical),
           clarityScore: parseInt(clarity),

@@ -4,19 +4,24 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-// Simple admin check - in production use role-based access
-async function checkIsAdmin(userId: string) {
-  return userId === process.env.NEXT_PUBLIC_ADMIN_ID || 
-         process.env.NODE_ENV === 'development';
-}
+import AssignReviewersForm from "@/components/assign-reviewers-form";
+import ReviewerSecurityManager from "@/components/reviewer-security-manager";
+import AdminUserManagement from "@/components/admin-user-management";
+import { requireAdminRole } from "@/lib/auth/admin-utils";
 
 export default async function AdminDashboard() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user || !(await checkIsAdmin(user.id))) {
-    redirect("/dashboard");
+  if (!user) {
+    redirect("/login?message=Please log in to access admin dashboard");
+  }
+
+  // Use secure admin role validation
+  try {
+    await requireAdminRole(user.id, supabase);
+  } catch (error) {
+    redirect("/dashboard?error=Access denied: Admin privileges required");
   }
 
   const { data: papers } = await supabase
@@ -29,7 +34,7 @@ export default async function AdminDashboard() {
 
   const { data: users } = await supabase
     .from("profiles")
-    .select("id");
+    .select("id, full_name, institution");
 
   const paperStats = {
     draft: papers?.filter(p => p.status === "draft").length || 0,
@@ -48,6 +53,13 @@ export default async function AdminDashboard() {
   return (
     <main className="max-w-7xl mx-auto px-4 py-8">
       <div className="space-y-8">
+        <Button
+          variant="outline"
+          className="mb-4"
+          asChild
+        >
+          <a href="/dashboard">Back to Dashboard</a>
+        </Button>
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
@@ -90,10 +102,12 @@ export default async function AdminDashboard() {
 
         {/* Tabs */}
         <Tabs defaultValue="submissions" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="submissions">
               Pending Submissions ({paperStats.submitted + paperStats.underReview})
             </TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
+            <TabsTrigger value="security">Security</TabsTrigger>
             <TabsTrigger value="stats">Paper Statistics</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
@@ -130,9 +144,40 @@ export default async function AdminDashboard() {
                       </Button>
                     </div>
                   </div>
+                  {/* Reviewer Assignment UI */}
+                  {(() => {
+                    // Fetch eligible reviewers (example: all profiles except author)
+                    const eligibleReviewers = users
+                      ? users
+                          .filter((u: any) => u.id !== paper.author_id)
+                          .map((u: any) => ({
+                            id: u.id,
+                            full_name: u.full_name || "Reviewer",
+                            institution: u.institution || "",
+                          }))
+                      : [];
+                    return (
+                      <div className="mt-4">
+                        <AssignReviewersForm
+                          paperId={paper.id}
+                          availableReviewers={eligibleReviewers}
+                        />
+                      </div>
+                    );
+                  })()}
                 </Card>
               ))
             )}
+          </TabsContent>
+
+          {/* User Management Tab */}
+          <TabsContent value="users" className="space-y-4">
+            <AdminUserManagement />
+          </TabsContent>
+
+          {/* Security Tab */}
+          <TabsContent value="security" className="space-y-4">
+            <ReviewerSecurityManager />
           </TabsContent>
 
           {/* Stats Tab */}
@@ -210,8 +255,8 @@ export default async function AdminDashboard() {
                   <p className="text-sm text-muted-foreground">
                     Automatically assign reviewers based on paper keywords and reviewer expertise
                   </p>
-                  <Button variant="outline" className="mt-3">
-                    Configure Rules
+                  <Button asChild variant="outline" className="mt-3">
+                    <Link href="/admin/configure-rules">Configure Rules</Link>
                   </Button>
                 </div>
                 <div className="p-4 rounded-lg border border-border bg-muted/30">

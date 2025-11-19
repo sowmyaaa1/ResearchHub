@@ -102,6 +102,25 @@ export default function SubmitPaperPage() {
         .map((k) => k.trim())
         .filter((k) => k);
 
+      // Insert into papers table first for reviewer mapping
+      const { data: paper, error: papersError } = await supabase
+        .from("papers")
+        .insert({
+          author_id: user.id,
+          title,
+          abstract,
+          keywords: keywordsArray,
+          pdf_url: pdfUrl,
+          content_url: "",
+          status: "submitted",
+          submission_date: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (papersError) throw papersError;
+
+      // Insert into submissions and link paper_id
       const { data: submission, error: dbError } = await supabase
         .from("submissions")
         .insert({
@@ -113,6 +132,7 @@ export default function SubmitPaperPage() {
           code_url: codeUrl,
           status: "submitted",
           submission_fee_amount: SUBMISSION_FEE,
+          paper_id: paper.id,
         })
         .select()
         .single();

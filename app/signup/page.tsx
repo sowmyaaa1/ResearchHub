@@ -9,6 +9,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useState } from "react";
+import { generateHederaKeyPair, validateHederaPrivateKey } from "@/lib/hedera/key-utils";
+import PrivateKeyInput from "@/components/private-key-input";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -16,6 +18,8 @@ export default function SignupPage() {
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState("viewer");
   const [walletAddress, setWalletAddress] = useState("");
+  const [privateKey, setPrivateKey] = useState("");
+  const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -32,6 +36,22 @@ export default function SignupPage() {
       return;
     }
 
+    if (role !== "viewer" && !privateKey) {
+      setError("Private key is required for Submitter and Reviewer roles");
+      setIsLoading(false);
+      return;
+    }
+
+    // Validate private key format if provided
+    if (privateKey) {
+      const validation = validateHederaPrivateKey(privateKey);
+      if (!validation.valid) {
+        setError(`Invalid private key: ${validation.error}`);
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const { data, error: authError } = await supabase.auth.signUp({
         email,
@@ -41,6 +61,7 @@ export default function SignupPage() {
             full_name: fullName,
             role,
             wallet_address: walletAddress,
+            private_key: privateKey,
           },
           // Email confirmation is now disabled - users are auto-confirmed
         },
@@ -126,19 +147,31 @@ export default function SignupPage() {
             </div>
 
             {role !== "viewer" && (
-              <div className="space-y-2">
-                <Label htmlFor="wallet">Hedera Wallet Address</Label>
-                <Input
-                  id="wallet"
-                  placeholder="0.0.xxxxx or hedera address"
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  required
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="wallet">Hedera Wallet Address</Label>
+                  <Input
+                    id="wallet"
+                    placeholder="0.0.xxxxx or hedera address"
+                    value={walletAddress}
+                    onChange={(e) => setWalletAddress(e.target.value)}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required for submitting and reviewing papers
+                  </p>
+                </div>
+
+                <PrivateKeyInput
+                  label="Hedera Private Key"
+                  value={privateKey}
+                  onChange={setPrivateKey}
+                  placeholder="Enter your private key or click Generate"
+                  required={true}
+                  showValidation={true}
+                  showGenerator={true}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Required for submitting and reviewing papers
-                </p>
-              </div>
+              </>
             )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}

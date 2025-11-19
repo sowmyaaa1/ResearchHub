@@ -16,7 +16,19 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  const isAdmin = process.env.NODE_ENV === 'development' || user.id === process.env.NEXT_PUBLIC_ADMIN_ID;
+  // Get user profile with role for secure admin check
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  const isAdmin = profile?.role === 'admin';
+
+  // Redirect admins to their dedicated admin interface
+  if (isAdmin) {
+    redirect("/admin");
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -39,11 +51,6 @@ export default async function DashboardLayout({
             <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
               <Link href="/reviews">Reviews</Link>
             </Button>
-            {isAdmin && (
-              <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
-                <Link href="/admin">Admin</Link>
-              </Button>
-            )}
             <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
               <Link href="/profile">Profile</Link>
             </Button>

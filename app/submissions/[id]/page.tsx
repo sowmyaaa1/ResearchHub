@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
+import PaperReviewActions from "@/components/paper-review-actions";
 
 export default async function SubmissionPage(props: {
   params: Promise<{ id: string }>;
@@ -163,6 +164,15 @@ export default async function SubmissionPage(props: {
           <Link href="/dashboard">Back to Dashboard</Link>
         </Button>
       </div>
+      {/* Show claim/review actions for eligible reviewers */}
+      {!isAuthor && user?.id && (
+        <div className="mt-8 flex justify-center">
+          <PaperReviewActions
+            paperId={submission.paper_id}
+            reviewerId={user.id}
+          />
+        </div>
+      )}
     </main>
   );
 }

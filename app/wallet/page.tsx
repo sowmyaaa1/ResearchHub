@@ -15,6 +15,51 @@ export default function WalletPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [balance, setBalance] = useState("0");
+  const [balanceLoading, setBalanceLoading] = useState(false);
+
+  const fetchBalance = async () => {
+    if (!profile?.wallet_address) return;
+    
+    setBalanceLoading(true);
+    try {
+      const response = await fetch("/api/wallet/balance");
+      if (response.ok) {
+        const data = await response.json();
+        setBalance(data.balance.toString());
+        console.log("Balance fetched:", data.balance, "HBAR");
+      } else {
+        console.error("Failed to fetch balance");
+        setBalance("Error");
+      }
+    } catch (error) {
+      console.error("Error fetching balance:", error);
+      setBalance("Error");
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+  const fetchTransactions = async () => {
+    if (!profile) return;
+    
+    try {
+      const supabase = createClient();
+      const { data: transData, error } = await supabase
+        .from("wallet_transactions")
+        .select("*")
+        .eq("user_id", profile.id)
+        .order("timestamp", { ascending: false });
+
+      if (!error && transData) {
+        setTransactions(transData);
+        console.log("Transactions fetched:", transData.length);
+      } else {
+        console.error("Failed to fetch transactions:", error);
+      }
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -34,28 +79,24 @@ export default function WalletPage() {
           setProfile(profileData);
           // Fetch HBAR balance if wallet address exists
           if (profileData.wallet_address) {
-            try {
-              console.log("Fetching Hedera balance for address:", profileData.wallet_address);
-              const hederaClient = new HederaClient();
-              const balanceResult = await hederaClient.getAccountBalance(profileData.wallet_address);
-              console.log("HederaClient.getAccountBalance result:", balanceResult);
-              setBalance(balanceResult.hbar);
-              hederaClient.close();
-            } catch (err) {
-              console.error("Error fetching Hedera balance:", err);
-              setBalance("Error");
-            }
+            fetchBalance();
           }
         }
 
-        const { data: transData, error: transError } = await supabase
-          .from("wallet_transactions")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("timestamp", { ascending: false });
+        // Fetch transactions after profile is loaded
+        if (!profileError && profileData) {
+          const { data: transData, error: transError } = await supabase
+            .from("wallet_transactions")
+            .select("*")
+            .eq("user_id", profileData.id)
+            .order("timestamp", { ascending: false });
 
-        if (!transError && transData) {
-          setTransactions(transData);
+          if (!transError && transData) {
+            setTransactions(transData);
+            console.log("Transactions loaded:", transData.length);
+          } else {
+            console.error("Failed to load transactions:", transError);
+          }
         }
       } catch (error) {
         console.error("Error loading wallet data:", error);
@@ -104,7 +145,9 @@ export default function WalletPage() {
               <CardTitle>HBAR Balance</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-bold">{balance} HBAR</p>
+              <p className="text-3xl font-bold">
+                {balanceLoading ? "Loading..." : `${balance} HBAR`}
+              </p>
               <Button
                 className="mt-4"
                 size="sm"
@@ -135,7 +178,12 @@ export default function WalletPage() {
         {/* Transaction History */}
         <Card>
           <CardHeader>
-            <CardTitle>Transaction History</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              Transaction History
+              <Button size="sm" variant="outline" onClick={fetchTransactions}>
+                Refresh
+              </Button>
+            </CardTitle>
             <CardDescription>All wallet transactions</CardDescription>
           </CardHeader>
           <CardContent>

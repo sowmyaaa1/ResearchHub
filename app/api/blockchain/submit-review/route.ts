@@ -40,7 +40,8 @@ export async function POST(request: NextRequest) {
     const blockchainResult = await recordReviewOnBlockchain(
       reviewId,
       review.paper_id,
-      review.profiles?.wallet_address || user.id
+      review.profiles?.wallet_address || user.id,
+      "mock_private_key" // This endpoint should be deprecated in favor of the main submit route
     );
 
     const { error: updateError } = await supabase

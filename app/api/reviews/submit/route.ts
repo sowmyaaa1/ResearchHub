@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { recordReviewOnBlockchain, transferHbar } from "@/lib/blockchain/hedera";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -13,47 +14,119 @@ export async function POST(request: NextRequest) {
     const {
       assignmentId,
       submissionId,
+      paperId,
       noveltyScore,
       technicalCorrectnessScore,
       clarityScore,
       significanceScore,
       recommendation,
-      comments,
+      comments
     } = await request.json();
 
-    const rewardAmount = 5; // 5 HBAR reward per review
-    const txHash = `0x${Math.random().toString(16).substring(2, 66)}`;
+    console.log("[reviews/submit] Received:", {
+      assignmentId,
+      submissionId,
+      paperId,
+      noveltyScore,
+      technicalCorrectnessScore,
+      clarityScore,
+      significanceScore,
+      recommendation
+    });
 
-    const { error: reviewError } = await supabase
+    // Get reviewer's wallet details
+    const { data: reviewerProfile } = await supabase
+      .from("profiles")
+      .select("wallet_address, private_key")
+      .eq("id", user.id)
+      .single();
+
+    if (!reviewerProfile?.wallet_address || !reviewerProfile?.private_key) {
+      return NextResponse.json(
+        { error: "Reviewer wallet not configured. Please set up your wallet in profile." },
+        { status: 400 }
+      );
+    }
+
+    // Platform wallet details - using the staking account for reward distribution
+    const PLATFORM_ACCOUNT_ID = "0.0.7281579";
+    const PLATFORM_PRIVATE_KEY = "3030020100300706052b8104000a0422042041c6b4b954c336eb0a70bb09439e9f1547d3c794390c814624f6e5eff99125e5";
+
+    let blockchainHash = `mock_tx_${Date.now()}`;
+    let transferResult = null;
+
+    // Process real blockchain transactions
+    try {
+      console.log("[reviews/submit] Processing real blockchain operations...");
+      
+      // Record review on blockchain
+      const reviewResult = await recordReviewOnBlockchain(
+        assignmentId,
+        paperId,
+        reviewerProfile.wallet_address,
+        reviewerProfile.private_key
+      );
+      blockchainHash = reviewResult.transactionHash;
+      console.log("[reviews/submit] Review recorded on blockchain:", reviewResult.transactionHash);
+
+      // Transfer 5 HBAR reward from platform to reviewer
+      transferResult = await transferHbar(
+        PLATFORM_ACCOUNT_ID,
+        PLATFORM_PRIVATE_KEY,
+        reviewerProfile.wallet_address,
+        5 // 5 HBAR reward
+      );
+
+      console.log("[reviews/submit] HBAR transfer successful:", {
+        transactionId: transferResult.transactionId,
+        status: transferResult.status,
+        from: PLATFORM_ACCOUNT_ID,
+        to: reviewerProfile.wallet_address,
+        amount: "5 HBAR"
+      });
+
+    } catch (blockchainError) {
+      console.error("[reviews/submit] Blockchain operation failed:", blockchainError);
+      console.log("[reviews/submit] Continuing with database insertion despite blockchain failure");
+    }
+
+    // Insert review submission into database
+    const reviewData: any = {
+      assignment_id: assignmentId,
+      reviewer_id: user.id,
+      novelty_score: noveltyScore,
+      technical_correctness_score: technicalCorrectnessScore,
+      clarity_score: clarityScore,
+      significance_score: significanceScore,
+      recommendation,
+      comments,
+      status: "completed",
+      reward_amount: 5,
+      blockchain_hash: blockchainHash
+    };
+
+    // Only add submission_id if it exists (not null)
+    if (submissionId) {
+      reviewData.submission_id = submissionId;
+    }
+
+    console.log("[reviews/submit] Inserting review data:", reviewData);
+
+    const { data: reviewSubmission, error: insertError } = await supabase
       .from("review_submissions")
-      .insert({
-        assignment_id: assignmentId,
-        reviewer_id: user.id,
-        submission_id: submissionId,
-        novelty_score: noveltyScore,
-        technical_correctness_score: technicalCorrectnessScore,
-        clarity_score: clarityScore,
-        significance_score: significanceScore,
-        recommendation,
-        comments,
-        reward_amount: rewardAmount,
-        reward_tx_hash: txHash,
-        status: "rewarded",
-      });
+      .insert(reviewData)
+      .select()
+      .single();
 
-    if (reviewError) throw reviewError;
+    if (insertError) {
+      console.error("[reviews/submit] Database insertion error:", insertError);
+      return NextResponse.json(
+        { error: "Failed to submit review", details: insertError.message },
+        { status: 500 }
+      );
+    }
 
-    // Record reward transaction
-    const { error: txError } = await supabase
-      .from("wallet_transactions")
-      .insert({
-        user_id: user.id,
-        tx_hash: txHash,
-        type: "reward",
-        amount: rewardAmount,
-      });
-
-    if (txError) throw txError;
+    console.log("[reviews/submit] Review submitted successfully:", reviewSubmission.id);
 
     // Update assignment status
     const { error: assignError } = await supabase
@@ -61,13 +134,57 @@ export async function POST(request: NextRequest) {
       .update({ status: "completed" })
       .eq("id", assignmentId);
 
-    if (assignError) throw assignError;
+    if (assignError) {
+      console.error("[reviews/submit] Assignment update error:", assignError);
+    }
 
-    return NextResponse.json({ success: true });
+    // Update paper status to published after review completion
+    const { error: paperError } = await supabase
+      .from("papers")
+      .update({ 
+        status: "published",
+        publication_date: new Date().toISOString()
+      })
+      .eq("id", paperId);
+
+    if (paperError) {
+      console.error("[reviews/submit] Paper status update error:", paperError);
+    } else {
+      console.log("[reviews/submit] Paper status updated to published:", paperId);
+    }
+
+    // Record wallet transaction if HBAR transfer was successful
+    if (transferResult) {
+      const { error: txError } = await supabase
+        .from("wallet_transactions")
+        .insert({
+          user_id: user.id,
+          tx_hash: blockchainHash,
+          hbar_transaction_id: transferResult.transactionId,
+          type: "reward",
+          amount: 5,
+          hbar_status: transferResult.status,
+        });
+
+      if (txError) {
+        console.error("[reviews/submit] Transaction record error:", txError);
+      } else {
+        console.log("[reviews/submit] Wallet transaction recorded");
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      reviewId: reviewSubmission.id,
+      message: "Review submitted successfully",
+      hbarTransferred: !!transferResult,
+      transactionId: transferResult?.transactionId,
+      blockchainHash: blockchainHash
+    });
   } catch (error) {
-    console.error("Review submit error:", error);
+    console.error("[reviews/submit] Error:", error);
     return NextResponse.json(
-      { error: "Failed to submit review" },
+      { error: "Failed to submit review", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }
