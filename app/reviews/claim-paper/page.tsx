@@ -4,10 +4,10 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 
-export default function ClaimReviewPageByPaper() {
+function ClaimReviewContent() {
   const searchParams = useSearchParams();
   const paperId = searchParams.get('paperId');
   const router = useRouter();
@@ -245,5 +245,13 @@ export default function ClaimReviewPageByPaper() {
         </Card>
       </div>
     </main>
+  );
+}
+
+export default function ClaimReviewPageByPaper() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ClaimReviewContent />
+    </Suspense>
   );
 }

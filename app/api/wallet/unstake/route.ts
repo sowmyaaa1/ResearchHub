@@ -56,8 +56,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Staking pool account - users stake TO this account and unstake FROM this account
-    const STAKING_CONTRACT_ADDRESS = "0.0.7281579";
-    const STAKING_ACCOUNT_PRIVATE_KEY = "3030020100300706052b8104000a0422042041c6b4b954c336eb0a70bb09439e9f1547d3c794390c814624f6e5eff99125e5";
+    const STAKING_CONTRACT_ADDRESS = process.env.STAKING_CONTRACT_ADDRESS || "0.0.7281579";
+    const STAKING_ACCOUNT_PRIVATE_KEY = process.env.STAKING_ACCOUNT_PRIVATE_KEY;
+
+    if (!STAKING_ACCOUNT_PRIVATE_KEY) {
+      console.error("Missing STAKING_ACCOUNT_PRIVATE_KEY environment variable");
+      return NextResponse.json({
+        error: "Staking system not configured. Please contact support."
+      }, { status: 500 });
+    }
 
     // Check if user has a staking record
     const { data: stakingRecord, error: stakingError } = await supabase

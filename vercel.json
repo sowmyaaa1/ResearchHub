@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "buildCommand": "next build --webpack",
+  "installCommand": "npm install --legacy-peer-deps --ignore-scripts",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/*/route.js": {
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "SKIP_PROCESS_EXIT_CHECK": "true",
+    "CI": "false",
+    "NODE_ENV": "production",
+    "DISABLE_ESLINT_PLUGIN": "true",
+    "NEXT_TELEMETRY_DISABLED": "1"
+  }
+}
