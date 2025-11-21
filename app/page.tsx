@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from 'next/navigation';
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -23,6 +24,18 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="border-b border-border bg-card sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <Link href="/" className="text-xl font-bold text-foreground">
+            ResearchHub
+          </Link>
+          <div className="flex gap-2 items-center">
+            <ThemeToggle />
+          </div>
+        </div>
+      </nav>
+
       {/* Hero Section */}
       <div className="flex flex-col items-center justify-center min-h-screen gap-8 px-4 py-20 text-center">
         <div className="max-w-3xl">

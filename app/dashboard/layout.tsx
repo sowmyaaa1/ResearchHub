@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import LogoutButton from "@/components/logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function DashboardLayout({
   children,
@@ -54,6 +55,7 @@ export default async function DashboardLayout({
             <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
               <Link href="/profile">Profile</Link>
             </Button>
+            <ThemeToggle />
             <LogoutButton />
           </div>
         </div>

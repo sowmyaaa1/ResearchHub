@@ -112,22 +112,22 @@ export default async function DashboardPage() {
             </Card>
           </div>
 
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
-            <h3 className="text-xl font-semibold mb-2">How ResearchHub Works</h3>
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50 rounded-lg p-6 border border-border">
+            <h3 className="text-xl font-semibold mb-2 text-foreground">How ResearchHub Works</h3>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="text-center">
-                <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-2">1</div>
-                <h4 className="font-medium">Submit Research</h4>
+                <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 text-white rounded-full flex items-center justify-center mx-auto mb-2">1</div>
+                <h4 className="font-medium text-foreground">Submit Research</h4>
                 <p className="text-sm text-muted-foreground">Upload your paper to IPFS with Hedera anchoring</p>
               </div>
               <div className="text-center">
-                <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-2">2</div>
-                <h4 className="font-medium">Peer Review</h4>
+                <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 text-white rounded-full flex items-center justify-center mx-auto mb-2">2</div>
+                <h4 className="font-medium text-foreground">Peer Review</h4>
                 <p className="text-sm text-muted-foreground">Expert reviewers stake HBAR and provide feedback</p>
               </div>
               <div className="text-center">
-                <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center mx-auto mb-2">3</div>
-                <h4 className="font-medium">Consensus & Rewards</h4>
+                <div className="w-8 h-8 bg-blue-600 dark:bg-blue-500 text-white rounded-full flex items-center justify-center mx-auto mb-2">3</div>
+                <h4 className="font-medium text-foreground">Consensus & Rewards</h4>
                 <p className="text-sm text-muted-foreground">Smart contracts handle consensus and distribute rewards</p>
               </div>
             </div>

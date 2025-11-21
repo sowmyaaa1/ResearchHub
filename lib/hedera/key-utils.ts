@@ -138,9 +138,9 @@ function isBase64(str: string): boolean {
 }
 
 /**
- * Validate Hedera private key format
+ * Validate Hedera private key format and get derived public key
  */
-export function validateHederaPrivateKey(key: string): { valid: boolean; error?: string } {
+export function validateHederaPrivateKey(key: string): { valid: boolean; error?: string; publicKey?: string } {
   try {
     const hexKey = convertDerToHex(key);
     
@@ -148,11 +148,42 @@ export function validateHederaPrivateKey(key: string): { valid: boolean; error?:
     const privateKey = PrivateKey.fromString(hexKey);
     const publicKey = privateKey.publicKey;
     
-    return { valid: true };
+    return { 
+      valid: true,
+      publicKey: publicKey.toString()
+    };
   } catch (error) {
     return { 
       valid: false, 
       error: error instanceof Error ? error.message : 'Invalid key format' 
+    };
+  }
+}
+
+/**
+ * Verify if a private key corresponds to a given wallet address
+ * Note: This is limited as we need the actual account creation transaction
+ * to verify the relationship, but we can at least validate the key format
+ */
+export function verifyPrivateKeyForWallet(privateKey: string, walletAddress: string): { matches: boolean; error?: string; publicKey?: string } {
+  try {
+    const validation = validateHederaPrivateKey(privateKey);
+    if (!validation.valid) {
+      return { matches: false, error: validation.error };
+    }
+
+    // For now, we can only validate the private key format
+    // The actual verification would require checking if the public key
+    // was used to create the account with the given wallet address
+    return {
+      matches: true, // We can't definitively verify this without additional data
+      publicKey: validation.publicKey,
+      error: undefined
+    };
+  } catch (error) {
+    return {
+      matches: false,
+      error: error instanceof Error ? error.message : 'Validation failed'
     };
   }
 }

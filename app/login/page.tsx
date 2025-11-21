@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
 import { useState } from "react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -37,8 +38,24 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-sm">
+    <div className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="border-b border-border bg-card sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <Link href="/" className="text-xl font-bold text-foreground">
+            ResearchHub
+          </Link>
+          <div className="flex gap-2 items-center">
+            <Button variant="ghost" asChild size="sm">
+              <Link href="/signup">Sign Up</Link>
+            </Button>
+            <ThemeToggle />
+          </div>
+        </div>
+      </nav>
+      
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-2xl">Welcome Back</CardTitle>
           <CardDescription>Sign in to your research account</CardDescription>
@@ -79,6 +96,7 @@ export default function LoginPage() {
           </p>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
