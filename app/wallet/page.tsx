@@ -129,7 +129,7 @@ export default function WalletPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <Card>
             <CardHeader>
-              <CardTitle>Wallet Address</CardTitle>
+              <CardTitle>Account ID</CardTitle>
             </CardHeader>
             <CardContent>
               {profile?.wallet_address ? (
@@ -221,11 +221,6 @@ export default function WalletPage() {
             )}
           </CardContent>
         </Card>
-      </div>
-      <div className="mt-8 flex justify-center">
-        <Button asChild variant="outline">
-          <Link href="/dashboard">Back to Dashboard</Link>
-        </Button>
       </div>
     </main>
   );

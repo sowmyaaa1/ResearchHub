@@ -32,49 +32,144 @@ export default async function ReviewsPage() {
   let receivedReviews = [];
 
   if (userRole === "reviewer") {
-    // Fetch reviewer content
-    const { data: assignments } = await supabase
+    // Fetch pending assignments with submission details
+    const { data: assignments, error: assignmentsError } = await supabase
       .from("review_assignments")
-      .select("*, papers(title, abstract, author_id)")
+      .select(`
+        *,
+        submissions (
+          id,
+          title,
+          abstract,
+          submitter_id
+        )
+      `)
       .eq("reviewer_id", user?.id)
-      .eq("status", "pending")
+      .eq("status", "claimed")
       .order("due_date", { ascending: true });
-    pendingAssignments = assignments || [];
 
-    // Fetch completed reviews - simplified query first
+    console.log("Pending assignments query:", { assignments, assignmentsError });
+
+    // Process assignments to remove duplicates and flatten data
+    if (assignments && assignments.length > 0 && !assignmentsError) {
+      const uniqueAssignments = new Map();
+      
+      assignments.forEach((assignment: any) => {
+        const submissionId = assignment.submissions?.id || assignment.submission_id;
+        if (submissionId && !uniqueAssignments.has(submissionId)) {
+          uniqueAssignments.set(submissionId, {
+            ...assignment,
+            title: assignment.submissions?.title || 'Untitled Paper',
+            abstract: assignment.submissions?.abstract || 'No abstract available',
+            submission_id: submissionId
+          });
+        }
+      });
+      
+      pendingAssignments = Array.from(uniqueAssignments.values());
+    } else {
+      pendingAssignments = [];
+    }
+
+    // Fetch completed reviews with submission details
     console.log("Fetching completed reviews for user:", user?.id);
     
-    // First, let's try a simple query without joins
     const { data: reviews, error: reviewsError } = await supabase
       .from("review_submissions")
       .select("*")
-      .eq("reviewer_id", user?.id);
+      .eq("reviewer_id", user?.id)
+      .in("status", ["submitted", "completed"]);
     
-    console.log("All review submissions for user:", { reviews, error: reviewsError });
+    console.log("Completed reviews query:", { reviews, reviewsError });
     
-    // Filter for completed ones
-    const completedReviewsData = reviews?.filter(review => 
-      review.status === 'submitted' || review.status === 'completed'
-    ) || [];
-    
-    console.log("Filtered completed reviews:", completedReviewsData);
-    
-    // For each completed review, fetch the paper details separately
-    if (completedReviewsData.length > 0) {
-      for (const review of completedReviewsData) {
-        const { data: submission } = await supabase
-          .from("submissions")
-          .select("title, abstract")
-          .eq("id", review.submission_id)
-          .maybeSingle();
+    // Process completed reviews data and fetch submission details
+    if (reviews && reviews.length > 0 && !reviewsError) {
+      const reviewsWithTitles = [];
+      
+      for (const review of reviews) {
+        let title = 'Unknown Paper';
+        let abstract = 'No abstract available';
+        let submission = null;
         
-        if (submission) {
-          review.submission_details = submission;
+        console.log(`Processing review:`, review);
+        
+        // Try to get assignment details first since that's what we know works
+        if (review.assignment_id) {
+          console.log(`Looking up assignment: ${review.assignment_id}`);
+          
+          const { data: assignmentData, error: assignmentError } = await supabase
+            .from("review_assignments")
+            .select("*")
+            .eq("id", review.assignment_id)
+            .maybeSingle();
+          
+          console.log(`Assignment lookup result:`, { assignmentData, assignmentError });
+          
+          if (assignmentData) {
+            // Try multiple approaches to get the paper details
+            
+            // Approach 1: Check if assignment has submission_id
+            if (assignmentData.submission_id) {
+              const { data: submissionData } = await supabase
+                .from("submissions")
+                .select("title, abstract")
+                .eq("id", assignmentData.submission_id)
+                .maybeSingle();
+              
+              console.log(`Submission via assignment lookup:`, submissionData);
+              if (submissionData) {
+                title = submissionData.title || title;
+                abstract = submissionData.abstract || abstract;
+              }
+            }
+            
+            // Approach 2: Check if assignment has paper_id (legacy)
+            if (title === 'Unknown Paper' && assignmentData.paper_id) {
+              const { data: paperData } = await supabase
+                .from("papers")
+                .select("title, abstract")
+                .eq("id", assignmentData.paper_id)
+                .maybeSingle();
+              
+              console.log(`Paper via assignment lookup:`, paperData);
+              if (paperData) {
+                title = paperData.title || title;
+                abstract = paperData.abstract || abstract;
+              }
+            }
+          }
         }
+        
+        // Final fallback - try direct submission_id if available
+        if (title === 'Unknown Paper' && review.submission_id) {
+          const { data: submissionData } = await supabase
+            .from("submissions")
+            .select("title, abstract")
+            .eq("id", review.submission_id)
+            .maybeSingle();
+          
+          console.log(`Direct submission lookup:`, submissionData);
+          if (submissionData) {
+            title = submissionData.title || title;
+            abstract = submissionData.abstract || abstract;
+          }
+        }
+        
+        console.log(`Final title for review ${review.id}: ${title}`);
+        
+        reviewsWithTitles.push({
+          ...review,
+          title,
+          abstract,
+          submission_details: submission
+        });
       }
+      
+      completedReviews = reviewsWithTitles;
+      console.log("Final completed reviews with titles:", completedReviews);
+    } else {
+      completedReviews = [];
     }
-    
-    completedReviews = completedReviewsData;
   } else if (userRole === "submitter") {
     // Fetch submitter content - papers they've submitted
     const { data: papers } = await supabase
@@ -131,15 +226,15 @@ export default async function ReviewsPage() {
                   <p className="text-sm mt-2">New review assignments will appear here when available</p>
                 </Card>
               ) : (
-                pendingAssignments.map((assignment: any) => (
-                  <Card key={assignment.id} className="p-6">
+                pendingAssignments.map((assignment: any, index: number) => (
+                  <Card key={assignment.id || assignment.assignment_id || `assignment-${index}`} className="p-6">
                     <div className="space-y-4">
                       <div>
                         <h3 className="text-lg font-semibold text-foreground">
-                          {assignment.papers?.title}
+                          {assignment.title}
                         </h3>
                         <p className="text-sm text-muted-foreground mt-1">
-                          {assignment.papers?.abstract?.substring(0, 200)}...
+                          {assignment.abstract?.substring(0, 200)}...
                         </p>
                       </div>
 
@@ -150,7 +245,7 @@ export default async function ReviewsPage() {
                       )}
 
                       <Button asChild>
-                        <Link href={`/reviews/${assignment.id}`}>
+                        <Link href={`/reviews/submit/${assignment.id}`}>
                           Start Review
                         </Link>
                       </Button>
@@ -167,11 +262,11 @@ export default async function ReviewsPage() {
                   <p className="text-sm mt-2">Completed reviews will be listed here</p>
                 </Card>
               ) : (
-                completedReviews.map((review: any) => (
-                  <Card key={review.id} className="p-6">
+                completedReviews.map((review: any, index: number) => (
+                  <Card key={review.id || `review-${index}`} className="p-6">
                     <div className="space-y-2">
                       <h3 className="text-lg font-semibold text-foreground">
-                        {review.submission_details?.title || 'Paper Title Not Available'}
+                        {review.title}
                       </h3>
                       <div className="flex items-center gap-4 text-sm">
                         <div className="flex gap-1">

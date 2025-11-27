@@ -45,15 +45,6 @@ export default async function AdminLayout({
             <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
               <Link href="/admin/configure-rules">Review Rules</Link>
             </Button>
-            <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
-              <Link href="/admin/papers">Manage Papers</Link>
-            </Button>
-            <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
-              <Link href="/admin/users">User Management</Link>
-            </Button>
-            <Button variant="ghost" asChild size="sm" className="hidden md:inline-flex">
-              <Link href="/admin/security">Security</Link>
-            </Button>
             <LogoutButton />
           </div>
         </div>

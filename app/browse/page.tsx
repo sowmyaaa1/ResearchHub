@@ -9,27 +9,53 @@ import { ArrowLeft } from "lucide-react";
 export default async function BrowsePage() {
   const supabase = await createClient();
 
-  // Simplified query without foreign key join to avoid RLS issues
+  // Get papers marked as published
   const { data: papers, error } = await supabase
     .from("papers")
     .select("id, title, abstract, keywords, created_at, author_id, status")
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
-  console.log("Browse page - Papers found:", papers?.length || 0);
+  // Get assignment rules to verify proper publication
+  const { data: rules } = await supabase
+    .from("review_assignment_rules")
+    .select("reviewer_count")
+    .single();
+
+  // Verify each paper has sufficient reviews
+  let verifiedPapers: any[] = [];
+  if (papers && rules) {
+    for (const paper of papers) {
+      const { data: reviewCount } = await supabase
+        .from("review_assignments")
+        .select(`
+          id,
+          review_submissions!inner(id)
+        `)
+        .eq("paper_id", paper.id)
+        .eq("status", "completed")
+        .eq("review_submissions.status", "completed");
+
+      if (reviewCount && reviewCount.length >= rules.reviewer_count) {
+        verifiedPapers.push(paper);
+      }
+    }
+  }
+
+  console.log("Browse page - Papers found:", verifiedPapers?.length || 0);
   console.log("Browse page - Error:", error);
 
   // Get author names separately to avoid RLS issues
-  let papersWithAuthors = papers || [];
-  if (papers && papers.length > 0) {
-    const authorIds = papers.map(p => p.author_id).filter(Boolean);
+  let papersWithAuthors = verifiedPapers || [];
+  if (verifiedPapers && verifiedPapers.length > 0) {
+    const authorIds = verifiedPapers.map(p => p.author_id).filter(Boolean);
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, full_name")
       .in("id", authorIds);
     
     // Combine papers with author names
-    papersWithAuthors = papers.map(paper => ({
+    papersWithAuthors = verifiedPapers.map(paper => ({
       ...paper,
       author_name: profiles?.find(p => p.id === paper.author_id)?.full_name || "Anonymous"
     }));

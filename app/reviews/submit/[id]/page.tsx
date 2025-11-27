@@ -8,6 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from "react";
+import Link from "next/link";
 
 export default function SubmitReviewPage() {
   const params = useParams();
@@ -152,6 +153,17 @@ export default function SubmitReviewPage() {
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8">
+      {/* Header with back button */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-3xl font-bold">Submit Review</h1>
+          <p className="text-muted-foreground mt-2">Provide detailed feedback and scores</p>
+        </div>
+        <Button asChild variant="outline">
+          <Link href="/dashboard">← Back to Dashboard</Link>
+        </Button>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Submit Review</CardTitle>

@@ -25,11 +25,44 @@ export default async function SubmissionPage(props: {
     return <div className="text-center py-12">Submission not found</div>;
   }
 
-  const { data: reviews } = await supabase
+  // Get reviews for this paper (handle multiple assignment linking patterns)
+  const { data: reviewsBySubmission } = await supabase
     .from("review_submissions")
     .select("*, profiles(full_name)")
     .eq("submission_id", params.id)
-    .order("created_at", { ascending: false });
+    .eq("status", "completed");
+
+  // Try assignment lookup by actual paper_id
+  const { data: reviewsByAssignment1 } = await supabase
+    .from("review_submissions")
+    .select(`
+      *,
+      profiles(full_name),
+      review_assignments!inner(paper_id)
+    `)
+    .eq("review_assignments.paper_id", submission.paper_id)
+    .eq("status", "completed");
+
+  // Also try assignment lookup by submission_id (for data consistency issues)
+  const { data: reviewsByAssignment2 } = await supabase
+    .from("review_submissions")
+    .select(`
+      *,
+      profiles(full_name),
+      review_assignments!inner(paper_id)
+    `)
+    .eq("review_assignments.paper_id", params.id)
+    .eq("status", "completed");
+
+  // Combine and deduplicate reviews
+  const allReviews = [
+    ...(reviewsBySubmission || []),
+    ...(reviewsByAssignment1 || []),
+    ...(reviewsByAssignment2 || [])
+  ];
+  const reviews = allReviews.filter((review, index, arr) => 
+    arr.findIndex(r => r.id === review.id) === index
+  );
 
   const isAuthor = user?.id === submission.submitter_id;
 
@@ -55,10 +88,10 @@ export default async function SubmissionPage(props: {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs defaultValue="overview" className="space-y-6" suppressHydrationWarning>
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews ({reviews?.length || 0})</TabsTrigger>
           {submission.pdf_url && <TabsTrigger value="pdf">PDF</TabsTrigger>}
         </TabsList>
 

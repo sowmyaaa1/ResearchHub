@@ -6,6 +6,10 @@ import Link from "next/link";
 import WalletBalance from "@/components/wallet-balance";
 import { redirect } from 'next/navigation';
 
+// Force this page to always fetch fresh data
+export const revalidate = 0;
+export const dynamic = 'force-dynamic';
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -14,11 +18,16 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single();
+
+  // Debug logging for profile role detection
+  console.log("Dashboard: User ID:", user.id);
+  console.log("Dashboard: Profile data:", profile);
+  console.log("Dashboard: Profile error:", profileError);
 
   const role = profile?.role || "viewer";
 
@@ -139,6 +148,8 @@ export default async function DashboardPage() {
 
   // Fetch submissions if submitter
   let submissions = [];
+  let hasExpertise = true; // Track if reviewer has specified expertise
+  
   if (role === "submitter") {
     const { data } = await supabase
       .from("submissions")
@@ -163,13 +174,31 @@ export default async function DashboardPage() {
     
     const reviewerExpertise = profile?.expertise?.toLowerCase().split(",").map((e: string) => e.trim()) || [];
     
-    // 1. Get assigned reviews from review_assignments table
-    // First, let's try without the join to see if the table exists
+    // Only show papers if reviewer has specified expertise
+    if (reviewerExpertise.length === 0 || reviewerExpertise[0] === '') {
+      console.log("Reviewer has no expertise specified - no papers shown");
+      hasExpertise = false;
+      availableReviews = [];
+      assignedReviews = [];
+      myReviews = [];
+    } else {
+      console.log("Reviewer expertise:", reviewerExpertise);
+      
+      // 1. Get assigned reviews from review_assignments table with paper details
     const { data: assignedData, error: assignedError } = await supabase
       .from("review_assignments")
-      .select("*")
+      .select(`
+        *,
+        submissions (
+          id,
+          title,
+          abstract,
+          keywords,
+          submitter_id
+        )
+      `)
       .eq("reviewer_id", user.id)
-      .eq("status", "pending");
+      .eq("status", "claimed");
     
     console.log("=== REVIEWER DASHBOARD DEBUG ===");
     console.log("User ID:", user.id);
@@ -180,9 +209,24 @@ export default async function DashboardPage() {
     console.log("Assigned Reviews Data:", assignedData);
     
     if (assignedData && assignedData.length > 0 && !assignedError) {
-      // If we got data without the relationship, we'll need to fetch submission details separately
-      console.log("Got assigned reviews:", assignedData);
-      assignedReviews = assignedData; // For now, just show the assignment data
+      // Process the data to flatten submission details and remove duplicates
+      const uniqueAssignments = new Map();
+      
+      assignedData.forEach((assignment: any) => {
+        const submissionId = assignment.submissions?.id || assignment.submission_id;
+        if (submissionId && !uniqueAssignments.has(submissionId)) {
+          uniqueAssignments.set(submissionId, {
+            ...assignment,
+            title: assignment.submissions?.title || 'Untitled Paper',
+            abstract: assignment.submissions?.abstract || 'No abstract available',
+            keywords: assignment.submissions?.keywords || 'No keywords provided',
+            submission_id: submissionId
+          });
+        }
+      });
+      
+      assignedReviews = Array.from(uniqueAssignments.values());
+      console.log("Processed assigned reviews (duplicates removed):", assignedReviews);
     } else {
       console.log("No assigned reviews or query failed:", assignedError);
     }
@@ -274,7 +318,46 @@ export default async function DashboardPage() {
     if (filteredPapers.length > 0) {
       // Filter out papers that are already assigned to you
       const alreadyAssignedPaperIds = assignedReviews.map(r => r.id);
-      availableReviews = filteredPapers.filter(paper => !alreadyAssignedPaperIds.includes(paper.id));
+      let potentialPapers = filteredPapers.filter(paper => !alreadyAssignedPaperIds.includes(paper.id));
+      
+      // Filter papers based on expertise match
+      availableReviews = potentialPapers.filter(paper => {
+        if (!paper.keywords || paper.keywords.length === 0) return false;
+        
+        const paperKeywords = paper.keywords.map((k: string) => k.toLowerCase().trim());
+        
+        // Check if reviewer has expertise that matches paper keywords
+        const hasExpertiseMatch = reviewerExpertise.some((expertise: string) => {
+          return paperKeywords.some((keyword: string) => {
+            // Direct match
+            if (expertise.includes(keyword) || keyword.includes(expertise)) return true;
+            
+            // Semantic matching for common terms
+            const semanticMatches: { [key: string]: string[] } = {
+              'ai': ['artificial intelligence', 'machine learning', 'deep learning', 'neural networks'],
+              'machine learning': ['ml', 'ai', 'artificial intelligence', 'data science'],
+              'blockchain': ['distributed ledger', 'cryptocurrency', 'smart contracts', 'dlt'],
+              'cryptography': ['encryption', 'security', 'crypto', 'privacy'],
+              'computer vision': ['image processing', 'cv', 'object detection'],
+              'nlp': ['natural language processing', 'text mining', 'language models'],
+              'cybersecurity': ['security', 'information security', 'network security'],
+              'data science': ['analytics', 'big data', 'data mining', 'statistics']
+            };
+            
+            // Check semantic matches
+            if (semanticMatches[expertise]?.includes(keyword) || 
+                semanticMatches[keyword]?.includes(expertise)) {
+              return true;
+            }
+            
+            return false;
+          });
+        });
+        
+        return hasExpertiseMatch;
+      });
+      
+      console.log(`Expertise filtering: ${potentialPapers.length} papers -> ${availableReviews.length} matches`);
     }
     console.log("Available (unassigned) papers:", availableReviews);
     console.log("=== END DEBUG ===");
@@ -298,6 +381,7 @@ export default async function DashboardPage() {
     
     console.log("Completed reviews query result:", { completed: completedReviewsData, error: reviewError });
     console.log("Number of completed reviews:", myReviews.length);
+    }
   }
 
   // Calculate and update reputation score based on blockchain logic
@@ -363,9 +447,9 @@ export default async function DashboardPage() {
         </Card>
         <Card className="p-6">
           <h3 className="text-sm font-medium text-muted-foreground">Wallet Balance</h3>
-          <p className="text-3xl font-bold mt-2">
+          <div className="text-3xl font-bold mt-2">
             <WalletBalance userId={user.id} />
-          </p>
+          </div>
         </Card>
         <Card className="p-6">
           <h3 className="text-sm font-medium text-muted-foreground">Role</h3>
@@ -428,8 +512,8 @@ export default async function DashboardPage() {
             <p className="text-muted-foreground">Papers that have been automatically assigned to you for review</p>
             {assignedReviews.length > 0 ? (
               <div className="grid gap-4">
-                {assignedReviews.map((paper: any) => (
-                  <Card key={paper.assignment_id} className="p-6">
+                {assignedReviews.map((paper: any, index: number) => (
+                  <Card key={paper.id || paper.assignment_id || `assignment-${index}`} className="p-6">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <h3 className="font-semibold">{paper.title}</h3>
@@ -437,7 +521,7 @@ export default async function DashboardPage() {
                           {paper.abstract?.substring(0, 150)}...
                         </p>
                         <p className="text-sm text-muted-foreground mt-2">
-                          <strong>Keywords:</strong> {paper.keywords?.join(", ") || "No keywords provided"}
+                          <strong>Keywords:</strong> {Array.isArray(paper.keywords) ? paper.keywords.join(", ") : paper.keywords || "No keywords provided"}
                         </p>
                         {paper.assigned_at && (
                           <p className="text-xs text-muted-foreground mt-1">
@@ -452,10 +536,10 @@ export default async function DashboardPage() {
                       </div>
                       <div className="flex gap-2 ml-4">
                         <Button asChild>
-                          <Link href={`/reviews/submit/${paper.assignment_id}`}>Start Review</Link>
+                          <Link href={`/reviews/submit/${paper.id || paper.assignment_id}`}>Start Review</Link>
                         </Button>
                         <Button asChild variant="outline">
-                          <Link href={`/submissions/${paper.id}`}>View Paper</Link>
+                          <Link href={`/submissions/${paper.submission_id}`}>View Paper</Link>
                         </Button>
                       </div>
                     </div>
@@ -499,15 +583,29 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <Card className="p-8 text-center">
-                <h3 className="text-lg font-medium mb-2">No Review Tasks Available</h3>
-                <p className="text-muted-foreground mb-4">
-                  There are currently no papers awaiting review. Review tasks will appear here when:
-                </p>
-                <ul className="text-sm text-muted-foreground text-left max-w-md mx-auto space-y-1 mb-4">
-                  <li>• Papers are submitted by authors</li>
-                  <li>• Papers match your expertise areas</li>
-                  <li>• You meet the minimum staking requirements</li>
-                </ul>
+                {role === "reviewer" && !hasExpertise ? (
+                  <>
+                    <h3 className="text-lg font-medium mb-2">Expertise Required</h3>
+                    <p className="text-muted-foreground mb-4">
+                      You need to specify your areas of expertise to see available papers for review.
+                    </p>
+                    <Button asChild>
+                      <Link href="/profile">Update Your Profile</Link>
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg font-medium mb-2">No Review Tasks Available</h3>
+                    <p className="text-muted-foreground mb-4">
+                      There are currently no papers awaiting review that match your expertise. Review tasks will appear here when:
+                    </p>
+                    <ul className="text-sm text-muted-foreground text-left max-w-md mx-auto space-y-1 mb-4">
+                      <li>• Papers are submitted that match your expertise areas</li>
+                      <li>• You meet the minimum staking requirements</li>
+                      <li>• Papers are not already assigned to other reviewers</li>
+                    </ul>
+                  </>
+                )}
                 
                 {/* Debug information */}
                 <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-left text-xs">

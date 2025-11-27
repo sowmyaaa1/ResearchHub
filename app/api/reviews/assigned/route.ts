@@ -99,6 +99,56 @@ export async function GET(request: NextRequest) {
     let status: string | null = null;
     if (paperIdParam && reviewerIdParam) {
       console.log("[assigned] Fetching assignment for paper", paperIdParam, "reviewer", reviewerIdParam);
+      
+      // First check if reviewer has already completed a review for this paper
+      // Check by assignment_id since submission_id might be null in some reviews
+      const { data: existingAssignments, error: existingAssignmentError } = await supabase
+        .from("review_assignments")
+        .select(`
+          id,
+          review_submissions!inner(id, status)
+        `)
+        .eq("paper_id", paperIdParam)
+        .eq("reviewer_id", reviewerIdParam)
+        .eq("review_submissions.status", "completed");
+
+      // Also check if assignment incorrectly uses submission_id as paper_id
+      const submission = submissions.find((s: any) => s.paper_id === paperIdParam);
+      let existingAssignmentsBySubmission: any[] = [];
+      if (submission) {
+        console.log("[assigned] Checking for assignments with paper_id =", submission.id, "(submission ID) for paper", paperIdParam);
+        const { data: assignmentsBySubmission } = await supabase
+          .from("review_assignments")
+          .select(`
+            id,
+            review_submissions!inner(id, status)
+          `)
+          .eq("paper_id", submission.id)  // submission.id used as paper_id
+          .eq("reviewer_id", reviewerIdParam)
+          .eq("review_submissions.status", "completed");
+        
+        existingAssignmentsBySubmission = assignmentsBySubmission || [];
+        console.log("[assigned] Found assignments by submission ID:", existingAssignmentsBySubmission.length);
+      } else {
+        console.log("[assigned] No submission found with paper_id =", paperIdParam);
+      }
+
+      const allExistingAssignments = [
+        ...(existingAssignments || []),
+        ...existingAssignmentsBySubmission
+      ];
+        
+      if (existingAssignmentError) {
+        console.warn("Assignment lookup error:", existingAssignmentError.message);
+      } else if (allExistingAssignments.length > 0) {
+        console.log("[assigned] Found existing completed review via assignment, marking as already_reviewed");
+        status = "already_reviewed";
+        const responsePayload = { papers, submissions, status, assignmentId: null };
+        console.log("[assigned] Response payload:", responsePayload);
+        return NextResponse.json(responsePayload);
+      }
+      
+      // Then check for assignment status
       const { data: assignment, error: assignmentError } = await supabase
         .from("review_assignments")
         .select("id, status")

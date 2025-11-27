@@ -157,7 +157,7 @@ export async function verifyPaperOnBlockchain(
 }
 
 export async function generateWalletAddress(): Promise<string> {
-  // Generate mock Hedera wallet address
+  // Generate mock Hedera account ID
   return `0.0.${Math.floor(Math.random() * 1000000)}`;
 }
 

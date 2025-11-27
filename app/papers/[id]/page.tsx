@@ -44,11 +44,16 @@ export default async function PaperDetailPage({
     .single();
   const submissionId = submission?.id || null;
 
-  // Get reviews without foreign key join
+  // Get reviews from review_submissions table (linked via assignments)
   const { data: reviews } = await supabase
-    .from("reviews")
-    .select("*")
-    .eq("paper_id", id)
+    .from("review_submissions")
+    .select(`
+      *,
+      profiles(full_name),
+      review_assignments!inner(paper_id)
+    `)
+    .eq("review_assignments.paper_id", id)
+    .eq("status", "completed")
     .order("created_at", { ascending: false });
 
   // Fetch assignment for logged-in reviewer
@@ -154,33 +159,48 @@ export default async function PaperDetailPage({
             <div className="space-y-4">
               {reviews.map((review: any) => (
                 <Card key={review.id} className="p-6">
-                  <div className="space-y-2">
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="font-semibold text-foreground">
-                          {review.profiles?.full_name}
+                          {review.profiles?.full_name || "Anonymous Reviewer"}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          {review.profiles?.institution}
+                          {new Date(review.created_at).toLocaleDateString()}
                         </p>
                       </div>
                       <div className="text-right">
-                        <div className="flex gap-1">
-                          {[...Array(review.rating)].map((_, i) => (
-                            <span key={i} className="text-yellow-500">★</span>
-                          ))}
-                        </div>
-                        <p className="text-sm font-medium text-foreground">
+                        <p className="text-sm font-medium text-foreground capitalize">
                           {review.recommendation}
                         </p>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {review.comment}
-                    </p>
-                    <p className="text-xs text-muted-foreground pt-2">
-                      {new Date(review.created_at).toLocaleDateString()}
-                    </p>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Novelty</p>
+                        <p className="text-sm font-semibold">{review.novelty_score}/5</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Technical</p>
+                        <p className="text-sm font-semibold">{review.technical_correctness_score}/5</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Clarity</p>
+                        <p className="text-sm font-semibold">{review.clarity_score}/5</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Significance</p>
+                        <p className="text-sm font-semibold">{review.significance_score}/5</p>
+                      </div>
+                    </div>
+                    
+                    {review.comments && (
+                      <div>
+                        <p className="text-sm font-medium mb-1">Comments</p>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">{review.comments}</p>
+                      </div>
+                    )}
                   </div>
                 </Card>
               ))}

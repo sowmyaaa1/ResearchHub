@@ -52,7 +52,8 @@ export default function ReviewerSecurityManager() {
         .rpc('check_author_reviewer_conflicts');
 
       if (conflictsError) {
-        console.error('Error loading conflicts:', conflictsError);
+        console.error('Error loading conflicts:', conflictsError.message || conflictsError.details || conflictsError || 'Unknown error');
+        setMessage({ type: 'error', text: 'Failed to load conflict data' });
       } else {
         setConflicts(conflictsData || []);
       }
@@ -68,7 +69,8 @@ export default function ReviewerSecurityManager() {
         .limit(100);
 
       if (auditError) {
-        console.error('Error loading audit log:', auditError);
+        console.error('Error loading audit log:', auditError.message || auditError.details || auditError || 'Unknown error');
+        setMessage({ type: 'error', text: 'Failed to load audit log' });
       } else {
         setAuditLog(auditData || []);
       }

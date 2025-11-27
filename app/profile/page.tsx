@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 import ProfileForm from "@/components/profile-form";
 
 export default async function ProfilePage() {
@@ -18,9 +19,14 @@ export default async function ProfilePage() {
   return (
     <main className="max-w-2xl mx-auto px-4 py-8">
       <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Profile Settings</h1>
-          <p className="text-muted-foreground">Manage your research profile and academic information</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Profile Settings</h1>
+            <p className="text-muted-foreground">Manage your research profile and academic information</p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/dashboard">← Back to Dashboard</Link>
+          </Button>
         </div>
 
         <Card>

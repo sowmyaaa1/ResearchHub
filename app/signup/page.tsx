@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import Link from "next/link";
 import { useRouter } from 'next/navigation';
@@ -20,6 +21,8 @@ export default function SignupPage() {
   const [role, setRole] = useState("viewer");
   const [walletAddress, setWalletAddress] = useState("");
   const [privateKey, setPrivateKey] = useState("");
+  const [expertise, setExpertise] = useState("");
+  const [institution, setInstitution] = useState("");
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -103,14 +106,45 @@ export default function SignupPage() {
     setIsLoading(true);
     setError(null);
 
-    if (role !== "viewer" && !walletAddress) {
-      setError("Wallet address is required for Submitter and Reviewer roles");
+    // Validate required fields
+    if (!fullName.trim()) {
+      setError("Full Name is required");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!email.trim()) {
+      setError("Email is required");
+      setIsLoading(false);
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Password is required");
+      setIsLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      setIsLoading(false);
+      return;
+    }
+
+    if (role !== "viewer" && !walletAddress.trim()) {
+      setError("Hedera Account ID is required for Submitter and Reviewer roles");
       setIsLoading(false);
       return;
     }
 
     if (role !== "viewer" && !privateKey) {
       setError("Private key is required for Submitter and Reviewer roles");
+      setIsLoading(false);
+      return;
+    }
+
+    if (role === "reviewer" && !expertise.trim()) {
+      setError("Areas of expertise are required for Reviewer role");
       setIsLoading(false);
       return;
     }
@@ -166,6 +200,8 @@ export default function SignupPage() {
             role,
             wallet_address: walletAddress,
             private_key: privateKey,
+            expertise: expertise,
+            institution: institution,
           },
           // Email confirmation is now disabled - users are auto-confirmed
         },
@@ -192,25 +228,25 @@ export default function SignupPage() {
         if (code === '23505' || message.includes('duplicate') || message.includes('unique')) {
           // PostgreSQL unique constraint violation
           if (details.includes('wallet_address') || message.includes('wallet address') || hint.includes('wallet')) {
-            errorMessage = "This wallet address is already registered to another account. Please use a different wallet address or sign in to your existing account.";
+            errorMessage = "This Hedera Account ID is already registered to another account. Please use a different account ID or sign in to your existing account.";
           } else if (details.includes('private_key') || message.includes('private key') || hint.includes('private')) {
             errorMessage = "This private key is already registered to another account. Please use a different private key or sign in to your existing account.";
           } else if (details.includes('email') || message.includes('email') || hint.includes('email')) {
             errorMessage = "This email address is already registered. Please use a different email address or sign in to your existing account.";
           } else {
-            errorMessage = "An account with these credentials already exists. Please check your email, wallet address, and private key, or try signing in to your existing account.";
+            errorMessage = "An account with these credentials already exists. Please check your email, Hedera Account ID, and private key, or try signing in to your existing account.";
           }
         } else if (code === '23514' || message.includes('check constraint')) {
           // PostgreSQL check constraint violation
           if (message.includes('wallet') || details.includes('wallet')) {
-            errorMessage = "Invalid wallet address format. Please enter a valid Hedera account ID (e.g., 0.0.12345).";
+            errorMessage = "Invalid Hedera Account ID format. Please enter a valid Hedera account ID (e.g., 0.0.12345).";
           } else if (message.includes('private') || details.includes('private')) {
             errorMessage = "Invalid private key format. Please enter a valid Hedera private key.";
           } else {
-            errorMessage = "Invalid data format. Please check your wallet address and private key.";
+            errorMessage = "Invalid data format. Please check your Hedera Account ID and private key.";
           }
         } else if (message.includes('wallet address') && message.includes('already')) {
-          errorMessage = "This wallet address is already registered to another account. Please use a different wallet address or sign in to your existing account.";
+          errorMessage = "This Hedera Account ID is already registered to another account. Please use a different account ID or sign in to your existing account.";
         } else if (message.includes('private key') && message.includes('already')) {
           errorMessage = "This private key is already registered to another account. Please use a different private key or sign in to your existing account.";
         } else if (message.includes('email') && message.includes('already')) {
@@ -218,7 +254,7 @@ export default function SignupPage() {
         } else if (message.includes('invalid') && message.includes('private key')) {
           errorMessage = "The private key format is invalid. Please enter a valid Hedera private key in DER or hex format.";
         } else if (message.includes('invalid') && message.includes('wallet')) {
-          errorMessage = "The wallet address format is invalid. Please enter a valid Hedera account ID (e.g., 0.0.12345).";
+          errorMessage = "The Hedera Account ID format is invalid. Please enter a valid Hedera account ID (e.g., 0.0.12345).";
         } else if (message.includes('network') || message.includes('connection')) {
           errorMessage = "Network error occurred. Please check your internet connection and try again.";
         } else if (message.includes('rate limit')) {
@@ -230,7 +266,7 @@ export default function SignupPage() {
           if (details || hint) {
             errorMessage = `Database error: ${details || hint}. Please check your information and try again.`;
           } else {
-            errorMessage = "Database error occurred while creating your account. This might be due to duplicate wallet address, private key, or email. Please try different credentials or sign in to your existing account.";
+            errorMessage = "Database error occurred while creating your account. This might be due to duplicate Hedera Account ID, private key, or email. Please try different credentials or sign in to your existing account.";
           }
         } else {
           // For any other error, provide the original message but with better context
@@ -270,7 +306,7 @@ export default function SignupPage() {
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
+              <Label htmlFor="fullName">Full Name <span className="text-red-500">*</span></Label>
               <Input
                 id="fullName"
                 placeholder="Dr. Jane Smith"
@@ -281,7 +317,7 @@ export default function SignupPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
               <Input
                 id="email"
                 type="email"
@@ -293,7 +329,17 @@ export default function SignupPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="institution">Institution (Optional)</Label>
+              <Input
+                id="institution"
+                placeholder="University of Research"
+                value={institution}
+                onChange={(e) => setInstitution(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
               <Input
                 id="password"
                 type="password"
@@ -327,10 +373,27 @@ export default function SignupPage() {
               </RadioGroup>
             </div>
 
+            {role === "reviewer" && (
+              <div className="space-y-2">
+                <Label htmlFor="expertise">Areas of Expertise</Label>
+                <Textarea
+                  id="expertise"
+                  placeholder="e.g., Machine Learning, Blockchain, Computer Vision, Natural Language Processing, Cybersecurity"
+                  value={expertise}
+                  onChange={(e) => setExpertise(e.target.value)}
+                  required
+                  rows={3}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Separate multiple areas with commas. This helps match you with relevant papers to review.
+                </p>
+              </div>
+            )}
+
             {role !== "viewer" && (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="wallet">Hedera Wallet Address</Label>
+                  <Label htmlFor="wallet">Hedera Account ID <span className="text-red-500">*</span></Label>
                   <Input
                     id="wallet"
                     placeholder="0.0.xxxxx or hedera address"
@@ -346,7 +409,7 @@ export default function SignupPage() {
                     <p className="text-xs text-destructive">{walletValidation.error}</p>
                   )}
                   {!walletValidation.loading && !walletValidation.error && walletAddress && role !== "viewer" && (
-                    <p className="text-xs text-green-600">Wallet address is available</p>
+                    <p className="text-xs text-green-600">Account ID is available</p>
                   )}
                   <p className="text-xs text-muted-foreground">
                     Required for submitting and reviewing papers

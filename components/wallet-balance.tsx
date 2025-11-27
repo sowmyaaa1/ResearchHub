@@ -9,6 +9,7 @@ interface WalletBalanceProps {
 
 export default function WalletBalance({ userId }: WalletBalanceProps) {
   const [balance, setBalance] = useState<string>("-- HBAR");
+  const [dbBalance, setDbBalance] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,12 +18,16 @@ export default function WalletBalance({ userId }: WalletBalanceProps) {
       try {
         const supabase = createClient();
         
-        // Get user's wallet address
+        // Get user's account ID and database balance
         const { data: profile } = await supabase
           .from("profiles")
-          .select("wallet_address")
+          .select("wallet_address, wallet_balance")
           .eq("id", userId)
           .single();
+
+        if (profile) {
+          setDbBalance(profile.wallet_balance || 0);
+        }
 
         if (profile?.wallet_address) {
           // Validate account ID format
@@ -87,5 +92,9 @@ export default function WalletBalance({ userId }: WalletBalanceProps) {
     );
   }
 
-  return <span>{balance}</span>;
+  return (
+    <span className="text-3xl font-bold">
+      {balance}
+    </span>
+  );
 }

@@ -22,6 +22,7 @@ export default async function PapersPage() {
     redirect("/admin");
   }
 
+  // Get papers and filter based on actual review completion status
   const { data: papers } = await supabase
     .from("papers")
     .select("*, profiles:author_id(full_name, institution)")
@@ -29,22 +30,92 @@ export default async function PapersPage() {
 
   // Content varies by role
   const userPapers = papers?.filter(p => p.author_id === user?.id) || [];
-  const publishedPapers = papers?.filter(p => p.status === "published") || [];
+  
+  // For published papers, verify they actually meet review requirements
+  let publishedPapers = [];
+  if (papers) {
+    for (const paper of papers) {
+      if (paper.status === "published") {
+        // Check if paper actually has the required number of reviews
+        const { data: reviewCount } = await supabase
+          .from("review_submissions")
+          .select("id", { count: 'exact' })
+          .eq("submission_id", paper.id)
+          .in("status", ["submitted", "completed"]);
+        
+        const completedReviews = reviewCount || 0;
+        const requiredReviews = 2; // Should match your review rules
+        
+        // Only show as published if it has enough reviews
+        if (completedReviews >= requiredReviews) {
+          publishedPapers.push({
+            ...paper,
+            review_count: completedReviews
+          });
+        }
+      }
+    }
+  }
   
   // For reviewers, get available papers to review from submissions
   let availableForReview = [];
   if (userRole === "reviewer") {
+    // First get all submissions that are under review
     const { data: submissions } = await supabase
       .from("submissions")
       .select("id, title, abstract, keywords, status, submitter_id")
       .in("status", ["under-review", "submitted"])
       .neq("submitter_id", user?.id); // Don't show papers they submitted
-    availableForReview = submissions || [];
+
+    // Get papers already reviewed by this user
+    const { data: reviewedPapers } = await supabase
+      .from("review_submissions")
+      .select("submission_id")
+      .eq("reviewer_id", user?.id)
+      .in("status", ["submitted", "completed"]);
+
+    const reviewedSubmissionIds = reviewedPapers?.map(r => r.submission_id) || [];
+    
+    // Also check for current assignments to avoid double assignments
+    const { data: assignedPapers } = await supabase
+      .from("review_assignments")
+      .select("submission_id")
+      .eq("reviewer_id", user?.id)
+      .eq("status", "claimed");
+
+    const assignedSubmissionIds = assignedPapers?.map(r => r.submission_id) || [];
+    
+    // Combine both lists of excluded papers
+    const excludedIds = [...new Set([...reviewedSubmissionIds, ...assignedSubmissionIds])];
+    
+    // Filter out papers already reviewed or assigned
+    availableForReview = submissions?.filter(paper => 
+      !excludedIds.includes(paper.id)
+    ) || [];
+    
+    console.log("Available for review filtering:", {
+      totalSubmissions: submissions?.length,
+      reviewedIds: reviewedSubmissionIds,
+      assignedIds: assignedSubmissionIds,
+      excludedIds,
+      finalAvailable: availableForReview.length
+    });
   }
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8">
       <div className="space-y-8">
+        {/* Header with back button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Research Papers</h1>
+            <p className="text-muted-foreground mt-2">Browse and manage research publications</p>
+          </div>
+          <Button asChild variant="outline">
+            <Link href="/dashboard">← Back to Dashboard</Link>
+          </Button>
+        </div>
+
         {/* Role-specific first section */}
         {userRole === "submitter" ? (
           /* My Papers Section for submitters */

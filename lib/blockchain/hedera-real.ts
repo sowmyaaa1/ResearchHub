@@ -19,7 +19,7 @@ export async function initiateHederaTransaction(
   try {
     // Verify wallet address format (0.0.xxxxx)
     if (!walletAddress.match(/^0\.0\.\d+$/)) {
-      throw new Error("Invalid Hedera wallet address format");
+      throw new Error("Invalid Hedera Account ID format");
     }
 
     console.log("[v0] Initiating Hedera transaction", {

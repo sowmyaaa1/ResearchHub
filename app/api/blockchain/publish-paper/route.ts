@@ -4,11 +4,11 @@ import { type NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
   try {
-    const { paperId, authorAccountId, authorPrivateKey, platformAccountId } = await request.json();
+    const { paperId, authorAccountId, authorPrivateKey, stakingContractAddress } = await request.json();
 
-    if (!paperId || !authorAccountId || !authorPrivateKey || !platformAccountId) {
+    if (!paperId || !authorAccountId || !authorPrivateKey || !stakingContractAddress) {
       return NextResponse.json(
-        { error: "Paper ID, author account ID, author private key, and platform account ID required" },
+        { error: "Paper ID, author account ID, author private key, and staking contract address required" },
         { status: 400 }
       );
     }
@@ -45,13 +45,45 @@ export async function POST(request: NextRequest) {
       authorPrivateKey
     );
 
-    // Transfer 10 HBAR from author to platform
+    // Transfer 10 HBAR from author to staking contract
     const transferResult = await transferHbar(
       authorAccountId,
       authorPrivateKey,
-      platformAccountId,
+      stakingContractAddress,
       10
     );
+
+    // Record the wallet transaction
+    const { error: transactionError } = await supabase
+      .from("wallet_transactions")
+      .insert({
+        user_id: user.id,
+        type: "paper_publication_stake",
+        amount: -10, // Negative because it's a deduction
+        description: `Publication stake for paper: ${paper.title}`,
+        timestamp: new Date().toISOString(),
+        hbar_transaction_id: transferResult.transactionId,
+        hbar_status: transferResult.status
+      });
+
+    if (transactionError) {
+      console.error("Failed to record wallet transaction:", transactionError);
+    }
+
+    // Update user's wallet balance in their profile
+    const { data: currentProfile } = await supabase
+      .from("profiles")
+      .select("wallet_balance")
+      .eq("id", user.id)
+      .single();
+
+    if (currentProfile) {
+      const newBalance = (currentProfile.wallet_balance || 0) - 10;
+      await supabase
+        .from("profiles")
+        .update({ wallet_balance: newBalance })
+        .eq("id", user.id);
+    }
 
     const { error: updateError } = await supabase
       .from("papers")

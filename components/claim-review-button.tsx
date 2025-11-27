@@ -29,23 +29,30 @@ export default function ClaimReviewButton({
     }
     
     setLoading(true);
-    const res = await fetch("/api/review-assignments/assign/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        paperId,
-        reviewerIds: [reviewerId],
-        reviewerPrivateKeys: { [reviewerId]: reviewerPrivateKey },
-        dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-      }),
-    });
-    const result = await res.json();
-    setLoading(false);
-    if (res.ok && result.success) {
-      alert(result.message || "Review claimed successfully.");
-      window.location.reload();
-    } else {
-      alert("Failed to claim review: " + (result.error || result.message || JSON.stringify(result)));
+    try {
+      const res = await fetch("/api/review-assignments/assign/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paperId,
+          reviewerIds: [reviewerId],
+          reviewerPrivateKeys: { [reviewerId]: reviewerPrivateKey },
+          dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
+      });
+      const result = await res.json();
+      
+      if (res.ok && result.success) {
+        alert(result.message || "Review claimed successfully.");
+        window.location.reload();
+      } else {
+        alert("Failed to claim review: " + (result.error || result.message || JSON.stringify(result)));
+      }
+    } catch (error) {
+      console.error("Claim review error:", error);
+      alert("Network error occurred while claiming review.");
+    } finally {
+      setLoading(false);
     }
   };
 

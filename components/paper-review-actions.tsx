@@ -14,7 +14,7 @@ export default function PaperReviewActions({
   paperId: string,
   reviewerId: string,
 }) {
-  const [assignmentStatus, setAssignmentStatus] = useState<"unassigned" | "claimed" | "completed" | null>(null);
+  const [assignmentStatus, setAssignmentStatus] = useState<"unassigned" | "claimed" | "completed" | "already_reviewed" | null>(null);
   const [assignmentId, setAssignmentId] = useState<string | null>(null);
   const [reviewerPrivateKey, setReviewerPrivateKey] = useState<string>("");
   const [keyFetchError, setKeyFetchError] = useState<string | null>(null);
@@ -123,6 +123,14 @@ export default function PaperReviewActions({
     return (
       <Button className="w-full mt-4" disabled>
         Review Completed
+      </Button>
+    );
+  }
+
+  if (assignmentStatus === "already_reviewed") {
+    return (
+      <Button className="w-full mt-4" disabled>
+        Already Reviewed
       </Button>
     );
   }

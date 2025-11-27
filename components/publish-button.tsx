@@ -37,10 +37,24 @@ export default function PublishButton({
     setMessage(null);
 
     try {
+      // Get user's wallet information
+      const walletInfo = {
+        authorAccountId: localStorage.getItem('hedera_account_id') || '',
+        authorPrivateKey: localStorage.getItem('hedera_private_key') || '',
+        stakingContractAddress: process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS || '0.0.1234' // Staking contract for receiving HBAR
+      };
+
+      if (!walletInfo.authorAccountId || !walletInfo.authorPrivateKey) {
+        throw new Error('Please connect your wallet and set up your Hedera account first');
+      }
+
       const response = await fetch("/api/blockchain/publish-paper", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paperId }),
+        body: JSON.stringify({ 
+          paperId,
+          ...walletInfo
+        }),
       });
 
       if (!response.ok) throw new Error("Failed to publish");
