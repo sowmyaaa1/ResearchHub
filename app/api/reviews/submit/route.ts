@@ -182,10 +182,6 @@ export async function POST(request: NextRequest) {
     } else {
       console.log(`[reviews/submit] Paper ${paperId} not published yet - needs ${requiredReviews - completedReviewCount} more reviews`);
     }
-      console.error("[reviews/submit] Paper status update error:", paperError);
-    } else {
-      console.log("[reviews/submit] Paper status updated to published:", paperId);
-    }
 
     // Record wallet transaction if HBAR transfer was successful
     if (transferResult) {
