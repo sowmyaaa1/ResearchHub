@@ -28,7 +28,7 @@ function ClaimReviewContent() {
         const supabase = createClient();
         const { data: paperData, error: paperError } = await supabase
           .from("submissions")
-          .select("*")
+          .select("*, paper_id")
           .eq("id", paperId)
           .single();
 
@@ -66,23 +66,26 @@ function ClaimReviewContent() {
       console.log("Claiming review for paper:", paper.id);
       console.log("User ID:", user.id);
 
-      // First, check if paper exists in papers table
+            // Check if paper record exists in papers table using the actual paper_id
+      let actualPaperId = paper.paper_id;
+      console.log("Checking for paper record with ID:", actualPaperId);
+      
       const { data: existingPaper, error: paperCheckError } = await supabase
         .from("papers")
         .select("id, title")
-        .eq("id", paper.id)
+        .eq("id", actualPaperId)
         .maybeSingle();
 
       console.log("Existing paper check:", { existingPaper, paperCheckError });
 
-      if (!existingPaper) {
+      if (!existingPaper && actualPaperId) {
         console.log("Paper doesn't exist in papers table, creating it...");
         
-        // Create paper record from submission
+        // Create paper record from submission using the correct paper_id
         const { data: newPaper, error: paperCreateError } = await supabase
           .from("papers")
           .insert({
-            id: paper.id,
+            id: actualPaperId,
             title: paper.title,
             abstract: paper.abstract,
             author_id: paper.submitter_id,
@@ -102,14 +105,47 @@ function ClaimReviewContent() {
           setIsClaiming(false);
           return;
         }
+      } else if (!actualPaperId) {
+        // If submission doesn't have paper_id, create a new paper record
+        console.log("Submission missing paper_id, creating new paper...");
+        const { data: newPaper, error: paperCreateError } = await supabase
+          .from("papers")
+          .insert({
+            title: paper.title,
+            abstract: paper.abstract,
+            author_id: paper.submitter_id,
+            keywords: paper.keywords,
+            status: 'under_review',
+            submission_date: paper.created_at,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+
+        if (paperCreateError) {
+          setError(`Failed to create paper record: ${paperCreateError.message}`);
+          setIsClaiming(false);
+          return;
+        }
+
+        // Update submission with the new paper_id
+        await supabase
+          .from("submissions")
+          .update({ paper_id: newPaper.id })
+          .eq("id", paper.id);
+
+        // Update our local paper object
+        setPaper({ ...paper, paper_id: newPaper.id });
+        actualPaperId = newPaper.id;
       }
 
-      // Now create the review assignment
-      console.log("Creating review assignment...");
+      // Now create the review assignment using the correct paper_id
+      console.log("Creating review assignment with paper_id:", actualPaperId || existingPaper?.id);
       const { data: assignment, error: assignmentError } = await supabase
         .from("review_assignments")
         .insert({
-          paper_id: paper.id,
+          paper_id: actualPaperId || existingPaper?.id,
           reviewer_id: user.id,
           status: 'pending',
           assigned_at: new Date().toISOString(),

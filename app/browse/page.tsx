@@ -22,25 +22,8 @@ export default async function BrowsePage() {
     .select("reviewer_count")
     .single();
 
-  // Verify each paper has sufficient reviews
-  let verifiedPapers: any[] = [];
-  if (papers && rules) {
-    for (const paper of papers) {
-      const { data: reviewCount } = await supabase
-        .from("review_assignments")
-        .select(`
-          id,
-          review_submissions!inner(id)
-        `)
-        .eq("paper_id", paper.id)
-        .eq("status", "completed")
-        .eq("review_submissions.status", "completed");
-
-      if (reviewCount && reviewCount.length >= rules.reviewer_count) {
-        verifiedPapers.push(paper);
-      }
-    }
-  }
+  // For now, show all published papers (TODO: Add back verification once review data is consistent)
+  let verifiedPapers: any[] = papers || [];
 
   console.log("Browse page - Papers found:", verifiedPapers?.length || 0);
   console.log("Browse page - Error:", error);

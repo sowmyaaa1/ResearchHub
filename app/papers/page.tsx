@@ -31,29 +31,29 @@ export default async function PapersPage() {
   // Content varies by role
   const userPapers = papers?.filter(p => p.author_id === user?.id) || [];
   
-  // For published papers, verify they actually meet review requirements
+  // For published papers, show all papers marked as published
+  // TODO: Add back review verification once review data is consistent
   let publishedPapers = [];
   if (papers) {
-    for (const paper of papers) {
-      if (paper.status === "published") {
-        // Check if paper actually has the required number of reviews
-        const { data: reviewCount } = await supabase
-          .from("review_submissions")
-          .select("id", { count: 'exact' })
-          .eq("submission_id", paper.id)
-          .in("status", ["submitted", "completed"]);
-        
-        const completedReviews = reviewCount || 0;
-        const requiredReviews = 2; // Should match your review rules
-        
-        // Only show as published if it has enough reviews
-        if (completedReviews >= requiredReviews) {
-          publishedPapers.push({
-            ...paper,
-            review_count: completedReviews
-          });
-        }
-      }
+    publishedPapers = papers.filter(paper => paper.status === "published");
+    
+    // Add review counts for display (but don't filter based on them)
+    for (let i = 0; i < publishedPapers.length; i++) {
+      const paper = publishedPapers[i];
+      const { data: reviewCount } = await supabase
+        .from("review_assignments")
+        .select(`
+          id,
+          review_submissions!inner(id, status)
+        `)
+        .eq("paper_id", paper.id)
+        .eq("status", "completed")
+        .eq("review_submissions.status", "completed");
+      
+      publishedPapers[i] = {
+        ...paper,
+        review_count: reviewCount?.length || 0
+      };
     }
   }
   

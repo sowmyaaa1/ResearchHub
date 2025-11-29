@@ -234,7 +234,7 @@ export default async function DashboardPage() {
     // 2. Get papers available for manual claiming (not yet assigned to anyone or you)
     const { data: paperData, error: queryError } = await supabase
       .from("submissions")
-      .select("id, title, abstract, keywords, status, submitter_id, created_at")
+      .select("id, title, abstract, keywords, status, submitter_id, created_at, paper_id")
       .in("status", ["under-review", "submitted"])
       .neq("submitter_id", user.id); // Exclude papers submitted by this reviewer
     
@@ -569,7 +569,7 @@ export default async function DashboardPage() {
                     </p>
                       <div className="flex gap-2 mt-4">
                         <Button asChild>
-                          <Link href={`/papers/${paper.id}`}>View Paper</Link>
+                          <Link href={`/papers/${paper.paper_id || paper.id}`}>View Paper</Link>
                         </Button>
                         <Button asChild variant="outline">
                           <Link href={`/submissions/${paper.id}`}>View Submission</Link>

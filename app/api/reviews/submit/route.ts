@@ -138,16 +138,50 @@ export async function POST(request: NextRequest) {
       console.error("[reviews/submit] Assignment update error:", assignError);
     }
 
-    // Update paper status to published after review completion
-    const { error: paperError } = await supabase
-      .from("papers")
-      .update({ 
-        status: "published",
-        publication_date: new Date().toISOString()
-      })
-      .eq("id", paperId);
+    // Check if paper now has enough completed reviews to be published
+    console.log("[reviews/submit] Checking if paper meets publication criteria...");
+    
+    // Get the required number of reviews from assignment rules
+    const { data: rules } = await supabase
+      .from("review_assignment_rules")
+      .select("reviewer_count")
+      .single();
+    
+    const requiredReviews = rules?.reviewer_count || 2;
+    
+    // Count completed reviews for this paper
+    const { data: completedReviews } = await supabase
+      .from("review_assignments")
+      .select(`
+        id,
+        review_submissions!inner(id, status)
+      `)
+      .eq("paper_id", paperId)
+      .eq("status", "completed")
+      .eq("review_submissions.status", "completed");
+    
+    const completedReviewCount = completedReviews?.length || 0;
+    console.log(`[reviews/submit] Paper ${paperId}: ${completedReviewCount}/${requiredReviews} reviews completed`);
+    
+    // Only publish if we have enough completed reviews
+    if (completedReviewCount >= requiredReviews) {
+      console.log("[reviews/submit] Publishing paper - sufficient reviews completed");
+      const { error: paperError } = await supabase
+        .from("papers")
+        .update({ 
+          status: "published",
+          publication_date: new Date().toISOString()
+        })
+        .eq("id", paperId);
 
-    if (paperError) {
+      if (paperError) {
+        console.error("[reviews/submit] Paper publication error:", paperError);
+      } else {
+        console.log(`[reviews/submit] Paper ${paperId} successfully published`);
+      }
+    } else {
+      console.log(`[reviews/submit] Paper ${paperId} not published yet - needs ${requiredReviews - completedReviewCount} more reviews`);
+    }
       console.error("[reviews/submit] Paper status update error:", paperError);
     } else {
       console.log("[reviews/submit] Paper status updated to published:", paperId);

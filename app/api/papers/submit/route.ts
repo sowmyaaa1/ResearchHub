@@ -81,6 +81,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create paper record' }, { status: 500 });
     }
 
+    // Create corresponding submission record for proper linking
+    const { data: submission, error: submissionError } = await supabase
+      .from('submissions')
+      .insert({
+        submitter_id: user.id,
+        title,
+        abstract,
+        keywords,
+        pdf_url: '', // Will be populated when PDF is uploaded separately
+        code_url: '', // Will be populated when code is uploaded separately
+        status: 'submitted',
+        submission_fee_amount: '10.00', // Standard IPFS submission fee
+        paper_id: paper.id,
+      })
+      .select()
+      .single();
+
+    if (submissionError) {
+      console.error('[API] Error creating submission record:', submissionError);
+      // Cleanup the paper record if submission creation fails
+      await supabase.from('papers').delete().eq('id', paper.id);
+      return NextResponse.json({ error: 'Failed to create submission record' }, { status: 500 });
+    }
+
+    console.log('[API] Created submission record:', submission.id);
+
     // Now trigger on-chain submission transaction
     try {
       const walletManager = WalletManager.getInstance();
@@ -169,6 +195,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         paperId: paper.id,
+        submissionId: submission.id,
         ipfsCid: ipfsResult.cid,
         transactionId: mockTxResult.transactionId,
         hcsSequenceNumber: ipfsResult.hcsSequenceNumber
