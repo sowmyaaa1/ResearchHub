@@ -244,6 +244,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+      }
     } else {
       console.log(`[reviews/submit] Paper ${paperId} not published yet - needs ${requiredReviews - completedReviewCount} more reviews`);
     }
