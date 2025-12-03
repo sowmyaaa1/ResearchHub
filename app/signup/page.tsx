@@ -375,7 +375,7 @@ export default function SignupPage() {
 
             {role === "reviewer" && (
               <div className="space-y-2">
-                <Label htmlFor="expertise">Areas of Expertise</Label>
+                <Label htmlFor="expertise">Areas of Expertise <span className="text-red-500">*</span></Label>
                 <Textarea
                   id="expertise"
                   placeholder="e.g., Machine Learning, Blockchain, Computer Vision, Natural Language Processing, Cybersecurity"

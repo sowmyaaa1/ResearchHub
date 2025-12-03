@@ -149,12 +149,16 @@ export async function POST(request: NextRequest) {
     
     const requiredReviews = rules?.reviewer_count || 2;
     
-    // Count completed reviews for this paper
+    // Count completed reviews for this paper and get their recommendations
     const { data: completedReviews } = await supabase
       .from("review_assignments")
       .select(`
         id,
-        review_submissions!inner(id, status)
+        review_submissions!inner(
+          id, 
+          status, 
+          recommendation
+        )
       `)
       .eq("paper_id", paperId)
       .eq("status", "completed")
@@ -165,19 +169,80 @@ export async function POST(request: NextRequest) {
     
     // Only publish if we have enough completed reviews
     if (completedReviewCount >= requiredReviews) {
-      console.log("[reviews/submit] Publishing paper - sufficient reviews completed");
-      const { error: paperError } = await supabase
-        .from("papers")
-        .update({ 
-          status: "published",
-          publication_date: new Date().toISOString()
-        })
-        .eq("id", paperId);
+      console.log("[reviews/submit] Sufficient reviews completed - checking consensus...");
+      
+      // Calculate consensus based on recommendations
+      const recommendations = completedReviews.map(r => r.review_submissions[0]?.recommendation);
+      const acceptCount = recommendations.filter(rec => rec === "accept" || rec === "minor_revisions").length;
+      const rejectCount = recommendations.filter(rec => rec === "major_revisions" || rec === "reject").length;
+      
+      // Require majority acceptance for publication
+      const shouldPublish = acceptCount > rejectCount;
+      
+      console.log(`[reviews/submit] Consensus check: ${acceptCount} accept, ${rejectCount} reject - ${shouldPublish ? 'PUBLISHING' : 'REJECTING'}`);
+      
+      if (shouldPublish) {
+        console.log("[reviews/submit] Publishing paper - sufficient reviews completed with positive consensus");
+      if (shouldPublish) {
+        console.log("[reviews/submit] Publishing paper - sufficient reviews completed with positive consensus");
+        const { error: paperError } = await supabase
+          .from("papers")
+          .update({ 
+            status: "published",
+            publication_date: new Date().toISOString()
+          })
+          .eq("id", paperId);
 
-      if (paperError) {
-        console.error("[reviews/submit] Paper publication error:", paperError);
+        if (paperError) {
+          console.error("[reviews/submit] Paper publication error:", paperError);
+        } else {
+          console.log(`[reviews/submit] Paper ${paperId} successfully published`);
+          
+          // Also update corresponding submission status
+          const { error: submissionError } = await supabase
+            .from("submissions")
+            .update({ 
+              status: "published",
+              updated_at: new Date().toISOString()
+            })
+            .eq("paper_id", paperId);
+
+          if (submissionError) {
+            console.error("[reviews/submit] Submission status update error:", submissionError);
+          } else {
+            console.log(`[reviews/submit] Submission for paper ${paperId} status updated to published`);
+          }
+        }
       } else {
-        console.log(`[reviews/submit] Paper ${paperId} successfully published`);
+        console.log("[reviews/submit] Rejecting paper - negative consensus");
+        const { error: paperError } = await supabase
+          .from("papers")
+          .update({ 
+            status: "rejected",
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", paperId);
+
+        if (paperError) {
+          console.error("[reviews/submit] Paper rejection error:", paperError);
+        } else {
+          console.log(`[reviews/submit] Paper ${paperId} successfully rejected`);
+          
+          // Also update corresponding submission status
+          const { error: submissionError } = await supabase
+            .from("submissions")
+            .update({ 
+              status: "rejected",
+              updated_at: new Date().toISOString()
+            })
+            .eq("paper_id", paperId);
+
+          if (submissionError) {
+            console.error("[reviews/submit] Submission status update error:", submissionError);
+          } else {
+            console.log(`[reviews/submit] Submission for paper ${paperId} status updated to rejected`);
+          }
+        }
       }
     } else {
       console.log(`[reviews/submit] Paper ${paperId} not published yet - needs ${requiredReviews - completedReviewCount} more reviews`);

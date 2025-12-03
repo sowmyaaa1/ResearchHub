@@ -60,6 +60,10 @@ export default function SubmitPaperPage() {
         throw new Error("PDF file is required");
       }
 
+      if (!codeFile) {
+        throw new Error("Code archive is required");
+      }
+
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
 
@@ -210,13 +214,14 @@ export default function SubmitPaperPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code">Code Archive (Optional)</Label>
+              <Label htmlFor="code">Code Archive <span className="text-red-500">*</span></Label>
               <input
                 id="code"
                 type="file"
                 accept=".zip,.tar,.tar.gz"
                 onChange={(e) => handleFileChange(e, "code")}
                 className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                required
               />
               {codeFile && (
                 <p className="text-sm text-green-600">Selected: {codeFile.name}</p>
