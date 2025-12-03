@@ -140,20 +140,26 @@ export async function POST(request: NextRequest) {
 
     // Check if paper now has enough completed reviews to be published
     console.log("[reviews/submit] Checking if paper meets publication criteria...");
+    console.log("[reviews/submit] paperId parameter:", paperId);
     
     // Get the required number of reviews from assignment rules
-    const { data: rules } = await supabase
+    const { data: rules, error: rulesError } = await supabase
       .from("review_assignment_rules")
       .select("reviewer_count")
       .single();
     
+    console.log("[reviews/submit] Assignment rules:", { rules, error: rulesError });
+    
     const requiredReviews = rules?.reviewer_count || 2;
+    console.log("[reviews/submit] Required reviews:", requiredReviews);
     
     // Count completed reviews for this paper and get their recommendations
-    const { data: completedReviews } = await supabase
+    const { data: completedReviews, error: reviewsError } = await supabase
       .from("review_assignments")
       .select(`
         id,
+        paper_id,
+        status,
         review_submissions!inner(
           id, 
           status, 
@@ -164,6 +170,13 @@ export async function POST(request: NextRequest) {
       .eq("status", "completed")
       .eq("review_submissions.status", "completed");
     
+    console.log("[reviews/submit] Completed reviews query:", { 
+      completedReviews, 
+      error: reviewsError,
+      paperId: paperId,
+      queryResults: completedReviews?.length || 0
+    });
+    
     const completedReviewCount = completedReviews?.length || 0;
     console.log(`[reviews/submit] Paper ${paperId}: ${completedReviewCount}/${requiredReviews} reviews completed`);
     
@@ -172,7 +185,7 @@ export async function POST(request: NextRequest) {
       console.log("[reviews/submit] Sufficient reviews completed - checking consensus...");
       
       // Calculate consensus based on recommendations
-      const recommendations = completedReviews.map(r => r.review_submissions[0]?.recommendation);
+      const recommendations = completedReviews?.map(r => r.review_submissions[0]?.recommendation) || [];
       const acceptCount = recommendations.filter(rec => rec === "accept" || rec === "minor_revisions").length;
       const rejectCount = recommendations.filter(rec => rec === "major_revisions" || rec === "reject").length;
       

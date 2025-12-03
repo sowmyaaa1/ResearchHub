@@ -214,7 +214,7 @@ export default function SubmitPaperPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="code">Code Archive <span className="text-red-500">*</span></Label>
+              <Label htmlFor="code">Code Archive <span className="text-black">*</span></Label>
               <input
                 id="code"
                 type="file"

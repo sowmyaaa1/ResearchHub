@@ -163,6 +163,7 @@ export default async function DashboardPage() {
   let availableReviews: any[] = [];
   let assignedReviews: any[] = [];
   let myReviews: any[] = [];
+  let myPublishedPapers: any[] = [];
   if (role === "reviewer") {
     // Check if reviewer has minimum stake (currently using a simple check)
     // For now, let's allow all reviewers to see available reviews
@@ -230,6 +231,44 @@ export default async function DashboardPage() {
     } else {
       console.log("No assigned reviews or query failed:", assignedError);
     }
+
+    // Fetch completed reviews first (needed for filtering available papers)
+    console.log("Fetching completed reviews for user:", user.id);
+    
+    const { data: allReviewSubmissions, error: reviewError } = await supabase
+      .from("review_submissions")
+      .select("*")
+      .eq("reviewer_id", user.id);
+    
+    console.log("All review submissions:", { allReviewSubmissions, error: reviewError });
+    
+    // Filter for completed/submitted reviews
+    const completedReviewsData = allReviewSubmissions?.filter(review => 
+      review.status === 'submitted' || review.status === 'completed'
+    ) || [];
+    
+    myReviews = completedReviewsData;
+    console.log("Completed reviews query result:", { completed: completedReviewsData, error: reviewError });
+    console.log("Number of completed reviews:", myReviews.length);
+
+    // Fetch published papers where this reviewer contributed
+    const { data: publishedPapers, error: publishedError } = await supabase
+      .from("submissions")
+      .select(`
+        id, title, abstract, keywords, status, created_at,
+        paper_id
+      `)
+      .eq("status", "published");
+
+    console.log("Published papers query:", { publishedPapers, error: publishedError });
+
+    // Filter published papers to only show ones this reviewer reviewed
+    myPublishedPapers = publishedPapers?.filter(paper => {
+      const reviewedPaperIds = myReviews.map(r => r.submission_id || r.paper_id).filter(Boolean);
+      return reviewedPaperIds.includes(paper.id) || reviewedPaperIds.includes(paper.paper_id);
+    }) || [];
+
+    console.log("My published papers:", myPublishedPapers.length);
 
     // 2. Get papers available for manual claiming (not yet assigned to anyone or you)
     const { data: paperData, error: queryError } = await supabase
@@ -318,7 +357,19 @@ export default async function DashboardPage() {
     if (filteredPapers.length > 0) {
       // Filter out papers that are already assigned to you
       const alreadyAssignedPaperIds = assignedReviews.map(r => r.id);
-      let potentialPapers = filteredPapers.filter(paper => !alreadyAssignedPaperIds.includes(paper.id));
+      
+      // Also filter out papers where you've already submitted a review
+      const alreadyReviewedPaperIds = myReviews.map(r => r.submission_id || r.paper_id).filter(Boolean);
+      const excludedPaperIds = [...alreadyAssignedPaperIds, ...alreadyReviewedPaperIds];
+      
+      let potentialPapers = filteredPapers.filter(paper => !excludedPaperIds.includes(paper.id));
+      
+      console.log("Filtering papers:", {
+        total: filteredPapers.length,
+        assignedPapers: alreadyAssignedPaperIds.length,
+        reviewedPapers: alreadyReviewedPaperIds.length,
+        afterExclusion: potentialPapers.length
+      });
       
       // Filter papers based on expertise match
       availableReviews = potentialPapers.filter(paper => {
@@ -361,26 +412,6 @@ export default async function DashboardPage() {
     }
     console.log("Available (unassigned) papers:", availableReviews);
     console.log("=== END DEBUG ===");
-
-    // Fetch completed reviews - simplified query with better debugging
-    console.log("Fetching completed reviews for user:", user.id);
-    
-    const { data: allReviewSubmissions, error: reviewError } = await supabase
-      .from("review_submissions")
-      .select("*")
-      .eq("reviewer_id", user.id);
-    
-    console.log("All review submissions:", { allReviewSubmissions, error: reviewError });
-    
-    // Filter for completed/submitted reviews
-    const completedReviewsData = allReviewSubmissions?.filter(review => 
-      review.status === 'submitted' || review.status === 'completed'
-    ) || [];
-    
-    myReviews = completedReviewsData;
-    
-    console.log("Completed reviews query result:", { completed: completedReviewsData, error: reviewError });
-    console.log("Number of completed reviews:", myReviews.length);
     }
   }
 
@@ -504,6 +535,7 @@ export default async function DashboardPage() {
             <TabsTrigger value="assigned">Assigned Reviews ({assignedReviews.length})</TabsTrigger>
             <TabsTrigger value="available">Available Papers ({availableReviews.length})</TabsTrigger>
             <TabsTrigger value="completed">My Reviews ({myReviews.length})</TabsTrigger>
+            <TabsTrigger value="published">Published Papers</TabsTrigger>
             <TabsTrigger value="staking">Staking</TabsTrigger>
           </TabsList>
 
@@ -665,6 +697,59 @@ export default async function DashboardPage() {
               </div>
             ) : (
               <p className="text-muted-foreground">No completed reviews</p>
+            )}
+          </TabsContent>
+
+          <TabsContent value="published" className="space-y-4">
+            <h2 className="text-2xl font-bold">Published Papers I Reviewed</h2>
+            <p className="text-muted-foreground">Papers that were published after I contributed reviews</p>
+            {myPublishedPapers.length > 0 ? (
+              <div className="grid gap-4">
+                {myPublishedPapers.map((paper: any) => (
+                  <Card key={paper.id} className="p-6">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold">{paper.title}</h3>
+                          <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">
+                            Published
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {paper.abstract ? `${paper.abstract.substring(0, 150)}...` : 'No abstract available'}
+                        </p>
+                        {paper.keywords && paper.keywords.length > 0 && (
+                          <div className="flex gap-1 mt-2">
+                            {paper.keywords.slice(0, 3).map((keyword: string, index: number) => (
+                              <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                {keyword}
+                              </span>
+                            ))}
+                            {paper.keywords.length > 3 && (
+                              <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                                +{paper.keywords.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/submissions/${paper.id}`}>View Paper</Link>
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="p-8 text-center">
+                <h3 className="text-lg font-medium mb-2">No Published Papers Yet</h3>
+                <p className="text-muted-foreground mb-4">
+                  Papers you review will appear here once they're published. Continue reviewing to contribute to the research community!
+                </p>
+                <Button asChild variant="outline">
+                  <Link href="/dashboard">Review More Papers</Link>
+                </Button>
+              </Card>
             )}
           </TabsContent>
 
