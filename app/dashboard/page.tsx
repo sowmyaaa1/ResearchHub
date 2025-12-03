@@ -370,45 +370,98 @@ export default async function DashboardPage() {
         reviewedPapers: alreadyReviewedPaperIds.length,
         afterExclusion: potentialPapers.length
       });
+
+      // Fetch assignment rules to determine what papers should be available
+      const { data: assignmentRules, error: rulesError } = await supabase
+        .from("review_assignment_rules")
+        .select("keywords, expertise, reviewer_count")
+        .single();
+
+      console.log("Assignment rules:", { assignmentRules, error: rulesError });
+
+      const ruleKeywords = assignmentRules?.keywords?.toLowerCase().split(",").map((k: string) => k.trim()) || [];
+      const ruleExpertise = assignmentRules?.expertise?.toLowerCase().split(",").map((e: string) => e.trim()) || [];
+
+      console.log("Rule keywords:", ruleKeywords);
+      console.log("Rule expertise:", ruleExpertise);
+      console.log("Reviewer expertise:", reviewerExpertise);
       
-      // Filter papers based on expertise match
+      // Filter papers based on assignment rules AND expertise match
       availableReviews = potentialPapers.filter(paper => {
         if (!paper.keywords || paper.keywords.length === 0) return false;
         
         const paperKeywords = paper.keywords.map((k: string) => k.toLowerCase().trim());
         
-        // Check if reviewer has expertise that matches paper keywords
-        const hasExpertiseMatch = reviewerExpertise.some((expertise: string) => {
-          return paperKeywords.some((keyword: string) => {
-            // Direct match
-            if (expertise.includes(keyword) || keyword.includes(expertise)) return true;
-            
-            // Semantic matching for common terms
-            const semanticMatches: { [key: string]: string[] } = {
-              'ai': ['artificial intelligence', 'machine learning', 'deep learning', 'neural networks'],
-              'machine learning': ['ml', 'ai', 'artificial intelligence', 'data science'],
-              'blockchain': ['distributed ledger', 'cryptocurrency', 'smart contracts', 'dlt'],
-              'cryptography': ['encryption', 'security', 'crypto', 'privacy'],
-              'computer vision': ['image processing', 'cv', 'object detection'],
-              'nlp': ['natural language processing', 'text mining', 'language models'],
-              'cybersecurity': ['security', 'information security', 'network security'],
-              'data science': ['analytics', 'big data', 'data mining', 'statistics']
-            };
-            
-            // Check semantic matches
-            if (semanticMatches[expertise]?.includes(keyword) || 
-                semanticMatches[keyword]?.includes(expertise)) {
-              return true;
-            }
-            
-            return false;
+        // Check assignment rules - paper must have keywords that match rule keywords
+        const paperMatchesRuleKeywords = ruleKeywords.length === 0 || ruleKeywords.some((ruleKeyword: string) =>
+          paperKeywords.some((paperKeyword: string) => 
+            ruleKeyword.includes(paperKeyword) || paperKeyword.includes(ruleKeyword)
+          )
+        );
+
+        if (!paperMatchesRuleKeywords) {
+          console.log(`Paper ${paper.title} excluded - doesn't match rule keywords. Paper: [${paperKeywords.join(', ')}], Rule: [${ruleKeywords.join(', ')}]`);
+          return false;
+        }
+
+        // Check if reviewer has expertise that matches either paper keywords OR rule expertise
+        const reviewerMatchesPaperKeywords = reviewerExpertise.some((expertise: string) =>
+          paperKeywords.some((keyword: string) => 
+            expertise.includes(keyword) || keyword.includes(expertise)
+          )
+        );
+
+        const reviewerMatchesRuleExpertise = ruleExpertise.length === 0 || reviewerExpertise.some((expertise: string) =>
+          ruleExpertise.some((ruleExp: string) =>
+            expertise.includes(ruleExp) || ruleExp.includes(expertise)
+          )
+        );
+
+        const hasExpertiseMatch = reviewerMatchesPaperKeywords || reviewerMatchesRuleExpertise;
+
+        if (!hasExpertiseMatch) {
+          console.log(`Paper ${paper.title} excluded - reviewer expertise doesn't match. Reviewer: [${reviewerExpertise.join(', ')}], Paper: [${paperKeywords.join(', ')}], Rule expertise: [${ruleExpertise.join(', ')}]`);
+          return false;
+        }
+        if (!hasExpertiseMatch) {
+          console.log(`Paper ${paper.title} excluded - reviewer expertise doesn't match. Reviewer: [${reviewerExpertise.join(', ')}], Paper: [${paperKeywords.join(', ')}], Rule expertise: [${ruleExpertise.join(', ')}]`);
+          return false;
+        }
+
+        // Enhanced semantic matching for common terms
+        if (!reviewerMatchesPaperKeywords && !reviewerMatchesRuleExpertise) {
+          const semanticMatches: { [key: string]: string[] } = {
+            'ai': ['artificial intelligence', 'machine learning', 'deep learning', 'neural networks'],
+            'machine learning': ['ml', 'ai', 'artificial intelligence', 'data science'],
+            'blockchain': ['distributed ledger', 'cryptocurrency', 'smart contracts', 'dlt'],
+            'cryptography': ['encryption', 'security', 'crypto', 'privacy'],
+            'computer vision': ['image processing', 'cv', 'object detection'],
+            'nlp': ['natural language processing', 'text mining', 'language models'],
+            'cybersecurity': ['security', 'information security', 'network security'],
+            'data science': ['analytics', 'big data', 'data mining', 'statistics']
+          };
+
+          const hasSemanticMatch = reviewerExpertise.some((expertise: string) => {
+            return paperKeywords.some((keyword: string) => {
+              if (semanticMatches[expertise]?.includes(keyword) || 
+                  semanticMatches[keyword]?.includes(expertise)) {
+                return true;
+              }
+              return false;
+            });
           });
-        });
-        
-        return hasExpertiseMatch;
+
+          if (!hasSemanticMatch) {
+            console.log(`Paper ${paper.title} excluded - no semantic match found`);
+            return false;
+          }
+        }
+
+        console.log(`Paper ${paper.title} included - matches reviewer expertise and assignment rules`);
+        return true;
       });
       
-      console.log(`Expertise filtering: ${potentialPapers.length} papers -> ${availableReviews.length} matches`);
+      console.log(`Assignment rules filtering: ${potentialPapers.length} papers -> ${availableReviews.length} matches`);
     }
     console.log("Available (unassigned) papers:", availableReviews);
     console.log("=== END DEBUG ===");

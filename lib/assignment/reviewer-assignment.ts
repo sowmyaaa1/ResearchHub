@@ -209,18 +209,100 @@ export class ReviewerAssignmentService {
 
       const supabase = await createClient();
 
-      // Get all eligible reviewers (excluding paper author)
-      const { data: reviewers, error } = await supabase
+      // First, check assignment rules to see if this paper is eligible for assignment
+      const { data: assignmentRules, error: rulesError } = await supabase
+        .from('review_assignment_rules')
+        .select('keywords, expertise, reviewer_count')
+        .single();
+
+      if (rulesError) {
+        console.warn('[Assignment] No assignment rules found, using defaults');
+      }
+
+      const ruleKeywords = assignmentRules?.keywords?.toLowerCase().split(',').map((k: string) => k.trim()) || [];
+      const ruleExpertise = assignmentRules?.expertise?.toLowerCase().split(',').map((e: string) => e.trim()) || [];
+
+      // Check if paper keywords match rule requirements
+      const paperKeywords = request.keywords.map(k => k.toLowerCase().trim());
+      const paperMatchesRules = ruleKeywords.length === 0 || ruleKeywords.some((ruleKeyword: string) =>
+        paperKeywords.some((paperKeyword: string) => 
+          ruleKeyword.includes(paperKeyword) || paperKeyword.includes(ruleKeyword)
+        )
+      );
+
+      if (!paperMatchesRules) {
+        console.log(`[Assignment] Paper rejected - doesn't match assignment rule keywords. Paper: [${paperKeywords.join(', ')}], Rules: [${ruleKeywords.join(', ')}]`);
+        return {
+          paperId: request.paperId,
+          assignedReviewers: [],
+          eligibleReviewers: [],
+          assignmentTimestamp: new Date(),
+          success: false,
+          reason: 'Paper keywords do not match assignment rule requirements'
+        };
+      }
+
+      console.log(`[Assignment] Paper matches assignment rules. Keywords: [${paperKeywords.join(', ')}], Rules: [${ruleKeywords.join(', ')}]`);
+
+      const supabase = await createClient();
+
+      // Get all eligible reviewers (excluding paper author and filtering by assignment rules)
+      const { data: allReviewers, error } = await supabase
         .from('profiles')
         .select(`
           id,
           hedera_account_id,
           expertise_tags,
+          expertise,
           on_chain_reputation,
           is_reviewer
         `)
         .eq('is_reviewer', true)
         .neq('id', request.authorId);
+
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
+      }
+
+      if (!allReviewers || allReviewers.length === 0) {
+        return {
+          paperId: request.paperId,
+          assignedReviewers: [],
+          eligibleReviewers: [],
+          assignmentTimestamp: new Date(),
+          success: false,
+          reason: 'No eligible reviewers found'
+        };
+      }
+
+      // Filter reviewers based on assignment rules - they must match either rule expertise OR paper keywords
+      const reviewers = allReviewers.filter(reviewer => {
+        const reviewerExpertise = (reviewer.expertise || reviewer.expertise_tags || '').toLowerCase().split(',').map((e: string) => e.trim());
+        
+        // Check if reviewer matches rule expertise requirements
+        const reviewerMatchesRuleExpertise = ruleExpertise.length === 0 || reviewerExpertise.some((expertise: string) =>
+          ruleExpertise.some((ruleExp: string) =>
+            expertise.includes(ruleExp) || ruleExp.includes(expertise)
+          )
+        );
+
+        // Check if reviewer matches paper keywords
+        const reviewerMatchesPaperKeywords = reviewerExpertise.some((expertise: string) =>
+          paperKeywords.some((keyword: string) => 
+            expertise.includes(keyword) || keyword.includes(expertise)
+          )
+        );
+
+        const isEligible = reviewerMatchesRuleExpertise || reviewerMatchesPaperKeywords;
+        
+        if (!isEligible) {
+          console.log(`[Assignment] Reviewer ${reviewer.id} excluded - expertise [${reviewerExpertise.join(', ')}] doesn't match rules [${ruleExpertise.join(', ')}] or paper keywords [${paperKeywords.join(', ')}]`);
+        }
+
+        return isEligible;
+      });
+
+      console.log(`[Assignment] Filtered reviewers by assignment rules: ${allReviewers.length} -> ${reviewers.length} eligible reviewers`);
 
       if (error) {
         throw new Error(`Database error: ${error.message}`);
