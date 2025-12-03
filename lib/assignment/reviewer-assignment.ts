@@ -244,8 +244,6 @@ export class ReviewerAssignmentService {
 
       console.log(`[Assignment] Paper matches assignment rules. Keywords: [${paperKeywords.join(', ')}], Rules: [${ruleKeywords.join(', ')}]`);
 
-      const supabase = await createClient();
-
       // Get all eligible reviewers (excluding paper author and filtering by assignment rules)
       const { data: allReviewers, error } = await supabase
         .from('profiles')
@@ -303,10 +301,6 @@ export class ReviewerAssignmentService {
       });
 
       console.log(`[Assignment] Filtered reviewers by assignment rules: ${allReviewers.length} -> ${reviewers.length} eligible reviewers`);
-
-      if (error) {
-        throw new Error(`Database error: ${error.message}`);
-      }
 
       if (!reviewers || reviewers.length === 0) {
         return {
